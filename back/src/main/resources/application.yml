@@ -1,0 +1,31 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: help-map-backend
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/${MYSQL_DATABASE:help_map}?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      # 개발 중에는 update, 운영 전환 시 validate로 변경할 것
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+
+# 카카오 로컬 API (주소 <-> 좌표 변환). REST API 키는 백엔드에서만 사용, 절대 프론트에 노출 금지
+kakao:
+  rest-api-key: ${KAKAO_REST_API_KEY}
+
+# 프론트엔드(React dev server) 주소. CORS 허용용
+app:
+  cors:
+    allowed-origins: ${FRONTEND_ORIGIN:http://localhost:5173}
