@@ -46,16 +46,25 @@ public class RiskWeightCalculator {
         return risks;
     }
 
-    /** 간선(선분)에서 반경 이내에 있는 점들의 weight 합 */
+    /** 간선(도로 모양 폴리라인)에서 반경 이내에 있는 점들의 weight 합 */
     private <T> long countNear(Edge edge, List<T> points, double radiusMeters,
                                ToDoubleFunction<T> latitude, ToDoubleFunction<T> longitude,
                                ToIntFunction<T> weight) {
+        List<double[]> line = edge.polyline();
         return points.stream()
-                .filter(p -> GeoUtils.distanceToSegmentMeters(
-                        latitude.applyAsDouble(p), longitude.applyAsDouble(p),
-                        edge.getFromNode().getLatitude(), edge.getFromNode().getLongitude(),
-                        edge.getToNode().getLatitude(), edge.getToNode().getLongitude()) <= radiusMeters)
+                .filter(p -> distanceToPolylineMeters(latitude.applyAsDouble(p), longitude.applyAsDouble(p), line)
+                        <= radiusMeters)
                 .mapToInt(weight)
                 .sum();
+    }
+
+    private double distanceToPolylineMeters(double lat, double lng, List<double[]> line) {
+        double min = Double.MAX_VALUE;
+        for (int i = 0; i + 1 < line.size(); i++) {
+            double[] a = line.get(i);
+            double[] b = line.get(i + 1);
+            min = Math.min(min, GeoUtils.distanceToSegmentMeters(lat, lng, a[0], a[1], b[0], b[1]));
+        }
+        return min;
     }
 }

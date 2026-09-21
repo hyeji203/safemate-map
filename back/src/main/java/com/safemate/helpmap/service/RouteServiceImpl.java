@@ -54,9 +54,11 @@ public class RouteServiceImpl implements RouteService {
             adjacency.computeIfAbsent(edge.getFromNode().getId(), k -> new ArrayList<>()).add(edge);
         }
 
-        List<Edge> shortest = dijkstra(start, goal, adjacency, Edge::getDistanceMeters);
+        // 도보 비용 = 거리 x 도로 종류 배율(큰 차도/계단은 피함). 안심경로는 여기에 위험도 가중을 더한다.
+        ToDoubleFunction<Edge> walkingCost = e -> e.getDistanceMeters() * RoadType.walkingFactor(e.getRoadType());
+        List<Edge> shortest = dijkstra(start, goal, adjacency, walkingCost);
         List<Edge> safe = dijkstra(start, goal, adjacency,
-                e -> e.getDistanceMeters() * (1 + RISK_PENALTY * risks.get(e.getId()).total()));
+                e -> walkingCost.applyAsDouble(e) * (1 + RISK_PENALTY * risks.get(e.getId()).total()));
 
         return new RoutesResponse(toResponse(start, shortest, risks), toResponse(start, safe, risks));
     }
@@ -108,19 +110,25 @@ public class RouteServiceImpl implements RouteService {
     private RouteResponse toResponse(Node start, List<Edge> pathEdges, Map<Long, EdgeRisk> risks) {
         List<RouteResponse.Point> points = new ArrayList<>();
         points.add(toPoint(start));
+        List<RouteResponse.LatLng> geometry = new ArrayList<>();
         double total = 0;
         double dark = 0;
         double reported = 0;
         for (Edge edge : pathEdges) {
             EdgeRisk risk = risks.get(edge.getId());
             points.add(toPoint(edge.getToNode()));
+            // 간선 시작점은 직전 간선의 끝점과 같으므로 첫 간선을 뺀 나머지는 첫 좌표를 건너뛴다
+            List<double[]> shape = edge.polyline();
+            for (int i = geometry.isEmpty() ? 0 : 1; i < shape.size(); i++) {
+                geometry.add(new RouteResponse.LatLng(shape.get(i)[0], shape.get(i)[1]));
+            }
             total += edge.getDistanceMeters();
             dark += edge.getDistanceMeters() * risk.darkness();
             if (risk.hasReport()) {
                 reported += edge.getDistanceMeters();
             }
         }
-        return new RouteResponse(total, (int) Math.ceil(total / WALKING_METERS_PER_MINUTE), dark, reported, points);
+        return new RouteResponse(total, (int) Math.ceil(total / WALKING_METERS_PER_MINUTE), dark, reported, points, geometry);
     }
 
     private Node nearestNode(List<Node> nodes, double lat, double lng) {

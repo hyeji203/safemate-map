@@ -3,6 +3,7 @@ OpenStreetMap 도로망에서 시연 지역의 보행 그래프(교차로 노드
 
 - 데이터: OpenStreetMap 공식 API(bbox 조회). (c) OpenStreetMap contributors, ODbL
 - 출력: back/src/main/resources/data/graph-nodes.csv, graph-edges.csv (UTF-8)
+  edges 컬럼: fromIndex,toIndex,distanceMeters,roadType(OSM highway 값),geometry("위도 경도;위도 경도;..." from->to 도로 모양)
 - 사용법:  python tools/build_osm_graph.py            # OSM에서 새로 받아 생성
            python tools/build_osm_graph.py --xml f.xml # 이미 받아 둔 OSM XML 사용
 
@@ -62,41 +63,45 @@ def build_graph(xml_bytes):
             continue
         if highway == "service" and tags.get("service") in ("parking_aisle", "driveway", "drive-through"):
             continue
-        ways.append([n.get("ref") for n in w.findall("nd")])
+        ways.append((highway, [n.get("ref") for n in w.findall("nd")]))
 
     def inside(node_id):
         return node_id in pos and haversine(*CENTER, *pos[node_id]) <= RADIUS_METERS
 
     # 둘 이상의 way가 지나거나 way의 끝인 점 = 교차로/끝점
     usage = collections.Counter()
-    for nds in ways:
+    for _, nds in ways:
         for n in set(nds):
             usage[n] += 1
     junctions = {
         n
-        for nds in ways
+        for _, nds in ways
         for i, n in enumerate(nds)
         if inside(n) and (usage[n] >= 2 or i in (0, len(nds) - 1))
     }
 
-    # 교차로 사이 도로 구간을 간선으로 만든다 (길이는 도로를 따라 누적)
+    # 교차로 사이 도로 구간을 간선으로 만든다 (길이는 도로를 따라 누적, 도로 모양 좌표도 함께 저장)
+    # edges[(a, b)] = (길이, 도로종류, [(lat, lng), ...] a->b 방향)
     edges = {}
-    for nds in ways:
-        last, acc, prev = None, 0.0, None
+    for highway, nds in ways:
+        last, acc, prev, pts = None, 0.0, None, []
         for n in nds:
             if n not in pos:
-                last, prev = None, None
+                last, prev, pts = None, None, []
                 continue
             if prev is not None and last is not None:
                 acc += haversine(*pos[prev], *pos[n])
+                pts.append(pos[n])
             prev = n
             if n in junctions:
                 if last is not None and last != n:
                     key = (min(last, n), max(last, n))
-                    edges[key] = min(acc, edges.get(key, acc))
-                last, acc = n, 0.0
+                    shape = pts if key[0] == last else pts[::-1]
+                    if key not in edges or acc < edges[key][0]:
+                        edges[key] = (acc, highway, shape)
+                last, acc, pts = n, 0.0, [pos[n]]
             elif not inside(n):
-                last = None
+                last, pts = None, []
 
     # 서로 이어지지 않은 조각은 경로 탐색에 쓸 수 없으니 가장 큰 연결 덩어리만 남긴다
     adjacency = collections.defaultdict(set)
@@ -141,9 +146,12 @@ def main():
             f.write(f"{index[osm_id]},교차로-{index[osm_id]},{lat:.7f},{lng:.7f}\n")
 
     with open(OUT_DIR / "graph-edges.csv", "w", encoding="utf-8", newline="\n") as f:
-        f.write("fromIndex,toIndex,distanceMeters\n")
-        for (a, b), meters in sorted(edges.items(), key=lambda kv: (index[kv[0][0]], index[kv[0][1]])):
-            f.write(f"{index[a]},{index[b]},{meters:.2f}\n")
+        f.write("fromIndex,toIndex,distanceMeters,roadType,geometry\n")
+        for (a, b), (meters, highway, shape) in sorted(
+            edges.items(), key=lambda kv: (index[kv[0][0]], index[kv[0][1]])
+        ):
+            geometry = ";".join(f"{lat:.6f} {lng:.6f}" for lat, lng in shape)
+            f.write(f"{index[a]},{index[b]},{meters:.2f},{highway},{geometry}\n")
 
     print(f"노드 {len(node_ids)}개, 간선 {len(edges)}개 (양방향은 서버가 적재할 때 만든다)")
 

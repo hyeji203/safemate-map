@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,7 +41,12 @@ public class GraphCsvLoader implements CommandLineRunner {
     @Override
     public void run(String... args) throws IOException {
         if (nodeRepository.count() > 0) {
-            return;
+            if (!edgeRepository.existsByRoadTypeIsNull()) {
+                return;
+            }
+            // 도로 종류/모양이 없는 예전 형식의 간선이면 새 CSV로 다시 적재한다 (노드를 참조하는 다른 테이블은 없음)
+            edgeRepository.deleteAllInBatch();
+            nodeRepository.deleteAllInBatch();
         }
 
         Map<Integer, Node> nodesByIndex = new HashMap<>();
@@ -55,15 +61,24 @@ public class GraphCsvLoader implements CommandLineRunner {
 
         List<Edge> edges = new ArrayList<>();
         for (String[] cols : readRows(EDGES_CSV)) {
-            // 컬럼: fromIndex,toIndex,distanceMeters
+            // 컬럼: fromIndex,toIndex,distanceMeters,roadType,geometry
             Node from = nodesByIndex.get(Integer.parseInt(cols[0].trim()));
             Node to = nodesByIndex.get(Integer.parseInt(cols[1].trim()));
             double meters = Double.parseDouble(cols[2].trim());
-            edges.add(new Edge(from, to, meters));
-            edges.add(new Edge(to, from, meters));
+            String roadType = cols[3].trim();
+            String geometry = cols[4].trim();
+            edges.add(new Edge(from, to, meters, roadType, geometry));
+            edges.add(new Edge(to, from, meters, roadType, reverseGeometry(geometry)));
         }
         edgeRepository.saveAll(edges);
         log.info("도로망 CSV 적재: 노드 {}개, 간선 {}개(양방향)", nodes.size(), edges.size());
+    }
+
+    /** "a;b;c" 형태의 도로 모양 좌표열을 반대 방향("c;b;a")으로 뒤집는다 */
+    private String reverseGeometry(String geometry) {
+        List<String> points = new ArrayList<>(List.of(geometry.split(";")));
+        Collections.reverse(points);
+        return String.join(";", points);
     }
 
     /** 헤더를 건너뛰고 쉼표로 나눈 행을 돌려준다 (값에 쉼표가 없는 CSV 전용) */
