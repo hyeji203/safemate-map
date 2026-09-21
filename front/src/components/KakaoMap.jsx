@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { colors } from '../styles/colors'
 
 const KAKAO_JS_KEY = import.meta.env.REACT_APP_KAKAO_JS_KEY
 
@@ -22,19 +21,29 @@ function loadKakaoMapSdk() {
 }
 
 /**
- * 메인 지도 화면의 핵심 컴포넌트.
- * - markers: 제보 목록을 위험구간 마커(빨간 점)로 표시
- * - onMapClick: 지도를 클릭하면 좌표를 콜백으로 전달 (제보 등록 모달을 여는 용도)
+ * 메인 지도 컴포넌트.
+ * - markers: [{ id, lat, lng, title?, color?, onClick? }] 지도 위 점 표시 (color 미지정 시 네이비).
+ *   제보 마커는 color를 위험색(red)으로, 경로 노드는 선택 상태에 따른 색으로 넘기는 식으로 호출부에서 합쳐서 사용한다.
+ * - path: [{ lat, lng }] 경로 폴리라인 (빈 배열이면 표시 안 함)
+ * - pathColor: 폴리라인 색
+ * - onMapClick: 마커가 아닌 빈 지도 영역을 클릭했을 때 좌표 콜백 (제보 위치 선택용)
+ * center/level은 최초 렌더링에만 적용된다.
  */
-export default function KakaoMap({ center = { lat: 37.5665, lng: 126.978 }, level = 4, markers = [], onMapClick }) {
+export default function KakaoMap({
+  center = { lat: 37.5665, lng: 126.978 },
+  level = 4,
+  markers = [],
+  path = [],
+  pathColor = '#FFB020',
+  onMapClick,
+}) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
-  const overlaysRef = useRef([])
   const [mapReady, setMapReady] = useState(false)
 
   useEffect(() => {
     if (!KAKAO_JS_KEY) {
-      console.warn('REACT_APP_KAKAO_JS_KEY가 설정되지 않았습니다. .env를 확인하세요.')
+      console.warn('REACT_APP_KAKAO_JS_KEY가 설정되지 않았습니다. 루트 .env를 확인하세요.')
       return
     }
 
@@ -58,7 +67,43 @@ export default function KakaoMap({ center = { lat: 37.5665, lng: 126.978 }, leve
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 지도 클릭 시 좌표 전달
+  // 마커: markers가 바뀔 때마다 기존 것을 지우고 다시 그린다
+  useEffect(() => {
+    if (!mapReady) return
+    const { kakao } = window
+    const overlays = markers.map((m) => {
+      const el = document.createElement('div')
+      el.title = m.title ?? ''
+      el.style.cssText = `width:14px;height:14px;border-radius:50%;border:2px solid #fff;background:${
+        m.color ?? '#1A2B4C'
+      };box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:pointer`
+      if (m.onClick) el.addEventListener('click', () => m.onClick(m))
+      return new kakao.maps.CustomOverlay({
+        map: mapRef.current,
+        position: new kakao.maps.LatLng(m.lat, m.lng),
+        content: el,
+        yAnchor: 0.5,
+        xAnchor: 0.5,
+      })
+    })
+    return () => overlays.forEach((o) => o.setMap(null))
+  }, [mapReady, markers])
+
+  // 경로선
+  useEffect(() => {
+    if (!mapReady || path.length < 2) return
+    const { kakao } = window
+    const line = new kakao.maps.Polyline({
+      map: mapRef.current,
+      path: path.map((p) => new kakao.maps.LatLng(p.lat, p.lng)),
+      strokeWeight: 6,
+      strokeColor: pathColor,
+      strokeOpacity: 0.9,
+    })
+    return () => line.setMap(null)
+  }, [mapReady, path, pathColor])
+
+  // 지도 빈 공간 클릭 시 좌표 전달 (마커 클릭은 각 마커 자체의 onClick이 처리하므로 서로 안 겹침)
   useEffect(() => {
     if (!mapReady || !onMapClick) return
     const map = mapRef.current
@@ -67,26 +112,6 @@ export default function KakaoMap({ center = { lat: 37.5665, lng: 126.978 }, leve
     })
     return () => window.kakao.maps.event.removeListener(map, 'click', listener)
   }, [mapReady, onMapClick])
-
-  // 제보 마커 렌더링 (목록이 바뀔 때마다 새로 그림)
-  useEffect(() => {
-    if (!mapReady) return
-
-    overlaysRef.current.forEach((overlay) => overlay.setMap(null))
-
-    overlaysRef.current = markers.map((marker) => {
-      const dot = document.createElement('div')
-      dot.style.cssText = `width:14px;height:14px;border-radius:50%;background:${colors.red};border:2px solid #fff;box-shadow:0 0 4px rgba(0,0,0,0.4);`
-
-      const overlay = new window.kakao.maps.CustomOverlay({
-        position: new window.kakao.maps.LatLng(marker.latitude, marker.longitude),
-        content: dot,
-        yAnchor: 0.5,
-      })
-      overlay.setMap(mapRef.current)
-      return overlay
-    })
-  }, [mapReady, markers])
 
   return (
     <div
