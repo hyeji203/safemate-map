@@ -44,7 +44,7 @@ public class ReportServiceImpl implements ReportService {
         Report saved = reportRepository.save(report);
 
         // TODO(고도화 1단계): 여기서 SimpMessagingTemplate으로 /topic/reports 브로드캐스트
-        // TODO(2단계): 저장된 좌표 주변 Edge의 riskWeight 갱신 로직 연결
+        // 경로 계산(RouteServiceImpl) 때마다 RiskWeightCalculator가 제보를 조회해 위험도에 반영하므로 별도 갱신 로직은 없다
 
         return ReportResponse.from(saved);
     }

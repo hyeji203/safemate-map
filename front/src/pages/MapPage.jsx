@@ -8,18 +8,24 @@ import { reportApi } from '../api/reportApi'
 import { colors } from '../styles/colors'
 import { categoryLabel } from '../constants/reportCategories'
 
-// 신구대학교 인근 시연 지역 중심 (백엔드 GridSeedLoader의 임시 중심 좌표와 동일)
+// 신구대학교 인근 시연 지역 중심 (tools/build_osm_graph.py의 CENTER와 동일)
 const DEMO_CENTER = { lat: 37.4488, lng: 127.1677 }
 
+// 가로등은 이 줌 레벨 이하(= 확대했을 때)에서만 표시 (카카오맵은 숫자가 작을수록 확대)
+const STREETLIGHT_MAX_LEVEL = 2
+
 // 메인 지도 화면 (필수 MVP).
-// - 노드 마커를 차례로 클릭하면 출발 -> 도착 최단경로를 그린다 (1단계 검증용, 세 번째 클릭은 초기화)
+// - 노드 마커를 차례로 클릭하면 출발 -> 도착 최단경로(회색)와 안심경로(노랑)를 함께 그린다 (검증용, 세 번째 클릭은 초기화)
+// - 가로등(노란 작은 점) 표시
 // - 제보 마커 표시 + 지도 빈 공간 클릭으로 제보 등록까지 연결됨
 export default function MapPage() {
   // 경로 탐색 (지도&경로 담당)
   const [nodes, setNodes] = useState([])
+  const [streetLights, setStreetLights] = useState([])
   const [start, setStart] = useState(null)
   const [end, setEnd] = useState(null)
-  const [route, setRoute] = useState(null)
+  const [routes, setRoutes] = useState(null) // { shortest, safe }
+  const [routeRefreshKey, setRouteRefreshKey] = useState(0) // 제보 등록 후 경로를 다시 계산하기 위한 트리거
   const [error, setError] = useState(null)
 
   // 제보 (제보하기 담당)
@@ -36,15 +42,22 @@ export default function MapPage() {
   }, [])
 
   useEffect(() => {
+    routeApi
+      .findStreetLights()
+      .then((res) => setStreetLights(res.data))
+      .catch(() => setError('가로등 목록을 불러오지 못했습니다.'))
+  }, [])
+
+  useEffect(() => {
     if (!start || !end) return
     routeApi
       .findRoute({ fromLat: start.lat, fromLng: start.lng, toLat: end.lat, toLng: end.lng })
       .then((res) => {
-        setRoute(res.data)
+        setRoutes(res.data)
         setError(null)
       })
       .catch(() => setError('경로를 찾지 못했습니다.'))
-  }, [start, end])
+  }, [start, end, routeRefreshKey])
 
   const loadReports = useCallback(async () => {
     try {
@@ -72,8 +85,18 @@ export default function MapPage() {
   )
 
   const routeMarkers = useMemo(
-    () =>
-      nodes.map((n) => ({
+    () => [
+      ...streetLights.map((l) => ({
+        id: `light-${l.id}`,
+        lat: l.latitude,
+        lng: l.longitude,
+        title: '가로등',
+        color: colors.amber,
+        size: 6,
+        subtle: true,
+        maxLevel: STREETLIGHT_MAX_LEVEL,
+      })),
+      ...nodes.map((n) => ({
         id: n.id,
         lat: n.latitude,
         lng: n.longitude,
@@ -81,7 +104,8 @@ export default function MapPage() {
         color: n.id === start?.id ? colors.amber : n.id === end?.id ? colors.red : colors.navy,
         onClick: handleNodeClick,
       })),
-    [nodes, start, end, handleNodeClick],
+    ],
+    [nodes, streetLights, start, end, handleNodeClick],
   )
 
   const reportMarkers = useMemo(
@@ -100,12 +124,19 @@ export default function MapPage() {
   const allMarkers = useMemo(() => [...routeMarkers, ...reportMarkers], [routeMarkers, reportMarkers])
 
   // 출발/도착 중 하나라도 초기화되면 이전 경로는 숨긴다
-  const visibleRoute = start && end ? route : null
+  const visibleRoutes = start && end ? routes : null
 
-  const path = useMemo(
-    () => (visibleRoute ? visibleRoute.path.map((p) => ({ lat: p.latitude, lng: p.longitude })) : []),
-    [visibleRoute],
-  )
+  // 최단경로(회색, 굵게)를 아래에, 안심경로(노랑, 가늘게)를 위에 그려 겹쳐도 둘 다 보이게 한다
+  const paths = useMemo(() => {
+    if (!visibleRoutes) return []
+    // geometry = 실제 도로 모양(굽은 길 포함), 없으면 교차로만 직선으로 잇는다
+    const toPoints = (route) =>
+      (route.geometry?.length ? route.geometry : route.path).map((p) => ({ lat: p.latitude, lng: p.longitude }))
+    return [
+      { id: 'shortest', points: toPoints(visibleRoutes.shortest), color: colors.gray, weight: 10 },
+      { id: 'safe', points: toPoints(visibleRoutes.safe), color: colors.amber, weight: 5 },
+    ]
+  }, [visibleRoutes])
 
   const handleMapClick = (latlng) => {
     if (!reportMode) return
@@ -116,6 +147,8 @@ export default function MapPage() {
   const handleSubmitted = () => {
     setPendingLocation(null)
     loadReports()
+    // 새 제보가 위험도에 반영되도록, 이미 경로가 표시돼 있으면 다시 계산한다
+    setRouteRefreshKey((k) => k + 1)
   }
 
   return (
@@ -124,9 +157,10 @@ export default function MapPage() {
         center={DEMO_CENTER}
         level={3}
         markers={allMarkers}
-        path={path}
+        paths={paths}
         onMapClick={reportMode ? handleMapClick : undefined}
       />
+
 
       <div
         style={{
@@ -191,11 +225,19 @@ export default function MapPage() {
         }}
       >
         {error ??
-          (visibleRoute
-            ? `${Math.round(visibleRoute.totalDistanceMeters)}m · 도보 약 ${visibleRoute.estimatedMinutes}분 (다시 클릭하면 초기화)`
-            : start
-              ? '도착 노드를 클릭하세요'
-              : '출발 노드를 클릭하세요')}
+          (visibleRoutes ? (
+            <>
+              <RouteLine label="안심" color={colors.amber} route={visibleRoutes.safe} />
+              <RouteLine label="최단" color={colors.gray} route={visibleRoutes.shortest} />
+              <div style={{ color: colors.gray, fontSize: 12, marginTop: 4 }}>
+                다시 클릭하면 초기화
+              </div>
+            </>
+          ) : start ? (
+            '도착 노드를 클릭하세요'
+          ) : (
+            '출발 노드를 클릭하세요'
+          ))}
       </div>
 
       <button
@@ -242,6 +284,19 @@ export default function MapPage() {
           setPendingLocation(location)
         }}
       />
+    </div>
+  )
+}
+
+function RouteLine({ label, color, route }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ width: 20, height: 6, borderRadius: 3, background: color, flexShrink: 0 }} />
+      <strong>{label}</strong>
+      <span>
+        {Math.round(route.totalDistanceMeters)}m · 약 {route.estimatedMinutes}분 · 어두운 구간{' '}
+        {Math.round(route.darkDistanceMeters)}m · 제보 구간 {Math.round(route.reportedDistanceMeters)}m
+      </span>
     </div>
   )
 }

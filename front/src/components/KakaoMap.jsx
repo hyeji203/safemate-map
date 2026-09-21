@@ -22,10 +22,10 @@ function loadKakaoMapSdk() {
 
 /**
  * 메인 지도 컴포넌트.
- * - markers: [{ id, lat, lng, title?, color?, onClick? }] 지도 위 점 표시 (color 미지정 시 네이비).
+ * - markers: [{ id, lat, lng, title?, color?, size?, subtle?, maxLevel?, onClick? }] 지도 위 점 표시 (color 미지정 시 네이비, size 미지정 시 14px).
+ *   subtle: 얇은 테두리+반투명+그림자 없음. maxLevel: 지도 줌 레벨(작을수록 확대)이 이 값 이하일 때만 표시.
  *   제보 마커는 color를 위험색(red)으로, 경로 노드는 선택 상태에 따른 색으로 넘기는 식으로 호출부에서 합쳐서 사용한다.
- * - path: [{ lat, lng }] 경로 폴리라인 (빈 배열이면 표시 안 함)
- * - pathColor: 폴리라인 색
+ * - paths: [{ id, points: [{ lat, lng }], color, weight? }] 경로 폴리라인 목록 (뒤쪽 항목이 위에 그려짐)
  * - onMapClick: 마커가 아닌 빈 지도 영역을 클릭했을 때 좌표 콜백 (제보 위치 선택용)
  * center/level은 최초 렌더링에만 적용된다.
  */
@@ -33,13 +33,13 @@ export default function KakaoMap({
   center = { lat: 37.5665, lng: 126.978 },
   level = 4,
   markers = [],
-  path = [],
-  pathColor = '#FFB020',
+  paths = [],
   onMapClick,
 }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const [mapReady, setMapReady] = useState(false)
+  const [zoomLevel, setZoomLevel] = useState(level)
 
   useEffect(() => {
     if (!KAKAO_JS_KEY) {
@@ -56,6 +56,8 @@ export default function KakaoMap({
           center: new window.kakao.maps.LatLng(center.lat, center.lng),
           level,
         })
+        const map = mapRef.current
+        window.kakao.maps.event.addListener(map, 'zoom_changed', () => setZoomLevel(map.getLevel()))
         setMapReady(true)
       })
       .catch((err) => console.error('[KakaoMap]', err.message))
@@ -71,37 +73,48 @@ export default function KakaoMap({
   useEffect(() => {
     if (!mapReady) return
     const { kakao } = window
-    const overlays = markers.map((m) => {
-      const el = document.createElement('div')
-      el.title = m.title ?? ''
-      el.style.cssText = `width:14px;height:14px;border-radius:50%;border:2px solid #fff;background:${
-        m.color ?? '#1A2B4C'
-      };box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:pointer`
-      if (m.onClick) el.addEventListener('click', () => m.onClick(m))
-      return new kakao.maps.CustomOverlay({
-        map: mapRef.current,
-        position: new kakao.maps.LatLng(m.lat, m.lng),
-        content: el,
-        yAnchor: 0.5,
-        xAnchor: 0.5,
+    const overlays = markers
+      .filter((m) => m.maxLevel == null || zoomLevel <= m.maxLevel)
+      .map((m) => {
+        const el = document.createElement('div')
+        el.title = m.title ?? ''
+        const size = m.size ?? 14
+        const border = m.subtle ? 1 : 2
+        el.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;border:${border}px solid #fff;background:${
+          m.color ?? '#1A2B4C'
+        };opacity:${m.subtle ? 0.7 : 1};box-shadow:${
+          m.subtle ? 'none' : '0 1px 4px rgba(0,0,0,.4)'
+        };cursor:${m.onClick ? 'pointer' : 'default'}`
+        if (m.onClick) el.addEventListener('click', () => m.onClick(m))
+        return new kakao.maps.CustomOverlay({
+          map: mapRef.current,
+          position: new kakao.maps.LatLng(m.lat, m.lng),
+          content: el,
+          yAnchor: 0.5,
+          xAnchor: 0.5,
+        })
       })
-    })
     return () => overlays.forEach((o) => o.setMap(null))
-  }, [mapReady, markers])
+  }, [mapReady, markers, zoomLevel])
 
-  // 경로선
+  // 경로선: 배열 앞쪽이 아래, 뒤쪽이 위에 그려진다
   useEffect(() => {
-    if (!mapReady || path.length < 2) return
+    if (!mapReady) return
     const { kakao } = window
-    const line = new kakao.maps.Polyline({
-      map: mapRef.current,
-      path: path.map((p) => new kakao.maps.LatLng(p.lat, p.lng)),
-      strokeWeight: 6,
-      strokeColor: pathColor,
-      strokeOpacity: 0.9,
-    })
-    return () => line.setMap(null)
-  }, [mapReady, path, pathColor])
+    const lines = paths
+      .filter((p) => p.points.length >= 2)
+      .map(
+        (p) =>
+          new kakao.maps.Polyline({
+            map: mapRef.current,
+            path: p.points.map((pt) => new kakao.maps.LatLng(pt.lat, pt.lng)),
+            strokeWeight: p.weight ?? 6,
+            strokeColor: p.color,
+            strokeOpacity: 0.9,
+          }),
+      )
+    return () => lines.forEach((l) => l.setMap(null))
+  }, [mapReady, paths])
 
   // 지도 빈 공간 클릭 시 좌표 전달 (마커 클릭은 각 마커 자체의 onClick이 처리하므로 서로 안 겹침)
   useEffect(() => {
