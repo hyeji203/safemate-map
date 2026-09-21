@@ -128,3 +128,6 @@ Temporary Items
 .env.local
 .env.*.local
 *.env
+
+# 제보 첨부 사진 (로컬 디스크 저장, 팀원마다 다르므로 커밋하지 않음)
+**/uploads/

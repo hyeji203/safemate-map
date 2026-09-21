@@ -2,12 +2,14 @@ package com.safemate.helpmap.controller;
 
 import com.safemate.helpmap.dto.ReportCreateRequest;
 import com.safemate.helpmap.dto.ReportResponse;
+import com.safemate.helpmap.entity.type.ReportCategory;
 import com.safemate.helpmap.service.ReportService;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -18,9 +20,16 @@ public class ReportController {
 
     private final ReportService reportService;
 
-    @PostMapping
-    public ResponseEntity<ReportResponse> create(@Valid @RequestBody ReportCreateRequest request) {
-        ReportResponse response = reportService.create(request);
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ReportResponse> create(
+            @RequestParam String deviceId,
+            @RequestParam double latitude,
+            @RequestParam double longitude,
+            @RequestParam ReportCategory category,
+            @RequestPart(required = false) MultipartFile image
+    ) {
+        var request = new ReportCreateRequest(deviceId, latitude, longitude, category);
+        ReportResponse response = reportService.create(request, image);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 

@@ -21,11 +21,18 @@ spring:
         format_sql: true
     open-in-view: false
 
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 5MB
+
 # 카카오 로컬 API (주소 <-> 좌표 변환). REST API 키는 백엔드에서만 사용, 절대 프론트에 노출 금지
 kakao:
   rest-api-key: ${KAKAO_REST_API_KEY}
 
-# 프론트엔드(React dev server) 주소. CORS 허용용
 app:
+  # 프론트엔드(React dev server) 주소. CORS 허용용
   cors:
     allowed-origins: ${FRONTEND_ORIGIN:http://localhost:5173}
+  # 제보 사진 저장 위치 (back 폴더 기준 상대 경로). 실행 시 자동 생성됨. 개발용 로컬 디스크 저장.
+  upload-dir: uploads
