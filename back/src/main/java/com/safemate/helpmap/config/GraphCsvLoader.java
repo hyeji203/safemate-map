@@ -24,7 +24,7 @@ import java.util.Map;
 /**
  * 신구대학교 인근 실제 도로망(OpenStreetMap, (c) OpenStreetMap contributors, ODbL)을 적재한다.
  * resources/data/graph-nodes.csv, graph-edges.csv 는 tools/build_osm_graph.py 가 만든다.
- * 간선은 CSV에 한 번씩만 있고, 여기서 양방향 두 개로 저장한다. nodes 테이블이 비어 있을 때만 동작한다.
+ * 간선은 CSV에 한 번씩만 있고, 여기서 양방향 두 개로 저장한다. DB의 노드/간선이 CSV와 다를 때만 다시 적재한다.
  */
 @Slf4j
 @Component
@@ -40,18 +40,25 @@ public class GraphCsvLoader implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws IOException {
+        List<String[]> nodeRows = readRows(NODES_CSV);
+        List<String[]> edgeRows = readRows(EDGES_CSV);
+
         if (nodeRepository.count() > 0) {
-            if (!edgeRepository.existsByRoadTypeIsNull()) {
+            // DB의 그래프가 CSV와 같으면 그대로 둔다. 개수가 다르거나 도로 종류가 없는 예전 형식이면
+            // CSV로 다시 적재한다 (노드를 참조하는 다른 테이블은 없음)
+            boolean upToDate = nodeRepository.count() == nodeRows.size()
+                    && edgeRepository.count() == edgeRows.size() * 2L
+                    && !edgeRepository.existsByRoadTypeIsNull();
+            if (upToDate) {
                 return;
             }
-            // 도로 종류/모양이 없는 예전 형식의 간선이면 새 CSV로 다시 적재한다 (노드를 참조하는 다른 테이블은 없음)
             edgeRepository.deleteAllInBatch();
             nodeRepository.deleteAllInBatch();
         }
 
         Map<Integer, Node> nodesByIndex = new HashMap<>();
         List<Node> nodes = new ArrayList<>();
-        for (String[] cols : readRows(NODES_CSV)) {
+        for (String[] cols : nodeRows) {
             // 컬럼: index,name,latitude,longitude
             Node node = new Node(cols[1].trim(), Double.parseDouble(cols[2].trim()), Double.parseDouble(cols[3].trim()));
             nodesByIndex.put(Integer.parseInt(cols[0].trim()), node);
@@ -60,7 +67,7 @@ public class GraphCsvLoader implements CommandLineRunner {
         nodeRepository.saveAll(nodes);
 
         List<Edge> edges = new ArrayList<>();
-        for (String[] cols : readRows(EDGES_CSV)) {
+        for (String[] cols : edgeRows) {
             // 컬럼: fromIndex,toIndex,distanceMeters,roadType,geometry
             Node from = nodesByIndex.get(Integer.parseInt(cols[0].trim()));
             Node to = nodesByIndex.get(Integer.parseInt(cols[1].trim()));
