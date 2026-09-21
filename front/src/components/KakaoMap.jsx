@@ -24,16 +24,14 @@ function loadKakaoMapSdk() {
 /**
  * 메인 지도 컴포넌트.
  * - markers: [{ id, lat, lng, title, color?, size?, onClick? }] 지도 위 점 표시 (color 미지정 시 네이비, size 미지정 시 14px)
- * - path: [{ lat, lng }] 경로 폴리라인 (빈 배열이면 표시 안 함)
- * - pathColor: 폴리라인 색
+ * - paths: [{ id, points: [{ lat, lng }], color, weight? }] 경로 폴리라인 목록 (뒤쪽 항목이 위에 그려짐)
  * center/level은 최초 렌더링에만 적용된다.
  */
 export default function KakaoMap({
   center = { lat: 37.5665, lng: 126.978 },
   level = 4,
   markers = [],
-  path = [],
-  pathColor = '#FFB020',
+  paths = [],
 }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
@@ -87,19 +85,24 @@ export default function KakaoMap({
     return () => overlays.forEach((o) => o.setMap(null))
   }, [mapReady, markers])
 
-  // 경로선
+  // 경로선: 배열 앞쪽이 아래, 뒤쪽이 위에 그려진다
   useEffect(() => {
-    if (!mapReady || path.length < 2) return
+    if (!mapReady) return
     const { kakao } = window
-    const line = new kakao.maps.Polyline({
-      map: mapRef.current,
-      path: path.map((p) => new kakao.maps.LatLng(p.lat, p.lng)),
-      strokeWeight: 6,
-      strokeColor: pathColor,
-      strokeOpacity: 0.9,
-    })
-    return () => line.setMap(null)
-  }, [mapReady, path, pathColor])
+    const lines = paths
+      .filter((p) => p.points.length >= 2)
+      .map(
+        (p) =>
+          new kakao.maps.Polyline({
+            map: mapRef.current,
+            path: p.points.map((pt) => new kakao.maps.LatLng(pt.lat, pt.lng)),
+            strokeWeight: p.weight ?? 6,
+            strokeColor: p.color,
+            strokeOpacity: 0.9,
+          }),
+      )
+    return () => lines.forEach((l) => l.setMap(null))
+  }, [mapReady, paths])
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 }

@@ -7,14 +7,14 @@ import { colors } from '../styles/colors'
 // 신구대학교 인근 시연 지역 중심 (백엔드 GridSeedLoader의 임시 중심 좌표와 동일)
 const DEMO_CENTER = { lat: 37.4488, lng: 127.1677 }
 
-// 메인 지도 화면 (필수 MVP). 2단계에서 제보 마커 + 최단/안심 경로 듀얼 렌더링 추가 예정.
-// 1단계 검증용: 노드 마커를 차례로 클릭하면 출발 -> 도착 최단경로를 그린다 (세 번째 클릭은 초기화).
+// 메인 지도 화면 (필수 MVP). 제보 마커는 추후 추가 예정.
+// 검증용: 노드 마커를 차례로 클릭하면 출발 -> 도착 최단경로(회색)와 안심경로(노랑)를 함께 그린다 (세 번째 클릭은 초기화).
 export default function MapPage() {
   const [nodes, setNodes] = useState([])
   const [streetLights, setStreetLights] = useState([])
   const [start, setStart] = useState(null)
   const [end, setEnd] = useState(null)
-  const [route, setRoute] = useState(null)
+  const [routes, setRoutes] = useState(null) // { shortest, safe }
   const [error, setError] = useState(null)
 
   useEffect(() => {
@@ -36,7 +36,7 @@ export default function MapPage() {
     routeApi
       .findRoute({ fromLat: start.lat, fromLng: start.lng, toLat: end.lat, toLng: end.lng })
       .then((res) => {
-        setRoute(res.data)
+        setRoutes(res.data)
         setError(null)
       })
       .catch(() => setError('경로를 찾지 못했습니다.'))
@@ -77,16 +77,21 @@ export default function MapPage() {
   )
 
   // 출발/도착 중 하나라도 초기화되면 이전 경로는 숨긴다
-  const visibleRoute = start && end ? route : null
+  const visibleRoutes = start && end ? routes : null
 
-  const path = useMemo(
-    () => (visibleRoute ? visibleRoute.path.map((p) => ({ lat: p.latitude, lng: p.longitude })) : []),
-    [visibleRoute],
-  )
+  // 최단경로(회색, 굵게)를 아래에, 안심경로(노랑, 가늘게)를 위에 그려 겹쳐도 둘 다 보이게 한다
+  const paths = useMemo(() => {
+    if (!visibleRoutes) return []
+    const toPoints = (route) => route.path.map((p) => ({ lat: p.latitude, lng: p.longitude }))
+    return [
+      { id: 'shortest', points: toPoints(visibleRoutes.shortest), color: colors.gray, weight: 10 },
+      { id: 'safe', points: toPoints(visibleRoutes.safe), color: colors.amber, weight: 5 },
+    ]
+  }, [visibleRoutes])
 
   return (
     <div style={{ position: 'relative', height: '100%' }}>
-      <KakaoMap center={DEMO_CENTER} level={3} markers={markers} path={path} />
+      <KakaoMap center={DEMO_CENTER} level={3} markers={markers} paths={paths} />
 
       <div
         style={{
@@ -104,11 +109,19 @@ export default function MapPage() {
         }}
       >
         {error ??
-          (visibleRoute
-            ? `${Math.round(visibleRoute.totalDistanceMeters)}m · 도보 약 ${visibleRoute.estimatedMinutes}분 (다시 클릭하면 초기화)`
-            : start
-              ? '도착 노드를 클릭하세요'
-              : '출발 노드를 클릭하세요')}
+          (visibleRoutes ? (
+            <>
+              <RouteLine label="안심" color={colors.amber} route={visibleRoutes.safe} />
+              <RouteLine label="최단" color={colors.gray} route={visibleRoutes.shortest} />
+              <div style={{ color: colors.gray, fontSize: 12, marginTop: 4 }}>
+                다시 클릭하면 초기화
+              </div>
+            </>
+          ) : start ? (
+            '도착 노드를 클릭하세요'
+          ) : (
+            '출발 노드를 클릭하세요'
+          ))}
       </div>
 
       <div
@@ -161,6 +174,19 @@ export default function MapPage() {
       >
         ⚠️
       </Link>
+    </div>
+  )
+}
+
+function RouteLine({ label, color, route }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ width: 20, height: 6, borderRadius: 3, background: color, flexShrink: 0 }} />
+      <strong>{label}</strong>
+      <span>
+        {Math.round(route.totalDistanceMeters)}m · 약 {route.estimatedMinutes}분 · 어두운 구간{' '}
+        {Math.round(route.darkDistanceMeters)}m
+      </span>
     </div>
   )
 }

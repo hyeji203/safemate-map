@@ -1,6 +1,6 @@
 package com.safemate.helpmap.controller;
 
-import com.safemate.helpmap.dto.RouteResponse;
+import com.safemate.helpmap.dto.RoutesResponse;
 import com.safemate.helpmap.service.RouteService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,8 +16,8 @@ public class RouteController {
     private final RouteService routeService;
 
     @GetMapping
-    public RouteResponse findRoute(@RequestParam double fromLat, @RequestParam double fromLng,
-                                   @RequestParam double toLat, @RequestParam double toLng) {
-        return routeService.findShortestRoute(fromLat, fromLng, toLat, toLng);
+    public RoutesResponse findRoutes(@RequestParam double fromLat, @RequestParam double fromLng,
+                                     @RequestParam double toLat, @RequestParam double toLng) {
+        return routeService.findRoutes(fromLat, fromLng, toLat, toLng);
     }
 }
