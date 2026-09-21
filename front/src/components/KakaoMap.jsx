@@ -12,8 +12,9 @@ function loadKakaoMapSdk() {
     sdkLoadPromise = new Promise((resolve, reject) => {
       const script = document.createElement('script')
       script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_JS_KEY}&autoload=false`
+      console.log('[KakaoMap] SDK 요청 URL:', script.src)
       script.onload = () => window.kakao.maps.load(resolve)
-      script.onerror = reject
+      script.onerror = () => reject(new Error(`카카오맵 SDK 로드 실패: ${script.src}`))
       document.head.appendChild(script)
     })
   }
@@ -35,13 +36,15 @@ export default function KakaoMap({ center = { lat: 37.5665, lng: 126.978 }, leve
 
     let cancelled = false
 
-    loadKakaoMapSdk().then(() => {
-      if (cancelled || !containerRef.current) return
-      new window.kakao.maps.Map(containerRef.current, {
-        center: new window.kakao.maps.LatLng(center.lat, center.lng),
-        level,
+    loadKakaoMapSdk()
+      .then(() => {
+        if (cancelled || !containerRef.current) return
+        new window.kakao.maps.Map(containerRef.current, {
+          center: new window.kakao.maps.LatLng(center.lat, center.lng),
+          level,
+        })
       })
-    })
+      .catch((err) => console.error('[KakaoMap]', err.message))
 
     return () => {
       cancelled = true
