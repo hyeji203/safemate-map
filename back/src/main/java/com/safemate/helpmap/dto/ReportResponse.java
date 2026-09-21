@@ -13,14 +13,17 @@ public record ReportResponse(
         double latitude,
         double longitude,
         ReportCategory category,
+        String imageUrl,
         LocalDateTime createdAt
 ) {
     public static ReportResponse from(Report report) {
+        String imageUrl = report.getImagePath() == null ? null : "/uploads/" + report.getImagePath();
         return new ReportResponse(
                 report.getId(),
                 report.getLatitude(),
                 report.getLongitude(),
                 report.getCategory(),
+                imageUrl,
                 report.getCreatedAt()
         );
     }

@@ -12,7 +12,6 @@ function loadKakaoMapSdk() {
     sdkLoadPromise = new Promise((resolve, reject) => {
       const script = document.createElement('script')
       script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_JS_KEY}&autoload=false`
-      console.log('[KakaoMap] SDK 요청 URL:', script.src)
       script.onload = () => window.kakao.maps.load(resolve)
       script.onerror = () => reject(new Error(`카카오맵 SDK 로드 실패: ${script.src}`))
       document.head.appendChild(script)
@@ -23,8 +22,10 @@ function loadKakaoMapSdk() {
 
 /**
  * 메인 지도 컴포넌트.
- * - markers: [{ id, lat, lng, title, color?, size?, onClick? }] 지도 위 점 표시 (color 미지정 시 네이비, size 미지정 시 14px)
+ * - markers: [{ id, lat, lng, title?, color?, size?, onClick? }] 지도 위 점 표시 (color 미지정 시 네이비, size 미지정 시 14px).
+ *   제보 마커는 color를 위험색(red)으로, 경로 노드는 선택 상태에 따른 색으로 넘기는 식으로 호출부에서 합쳐서 사용한다.
  * - paths: [{ id, points: [{ lat, lng }], color, weight? }] 경로 폴리라인 목록 (뒤쪽 항목이 위에 그려짐)
+ * - onMapClick: 마커가 아닌 빈 지도 영역을 클릭했을 때 좌표 콜백 (제보 위치 선택용)
  * center/level은 최초 렌더링에만 적용된다.
  */
 export default function KakaoMap({
@@ -32,6 +33,7 @@ export default function KakaoMap({
   level = 4,
   markers = [],
   paths = [],
+  onMapClick,
 }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
@@ -59,6 +61,7 @@ export default function KakaoMap({
     return () => {
       cancelled = true
     }
+    // 지도는 최초 1회만 생성 (center/level 변경으로 재생성하지 않음)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -104,5 +107,25 @@ export default function KakaoMap({
     return () => lines.forEach((l) => l.setMap(null))
   }, [mapReady, paths])
 
-  return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+  // 지도 빈 공간 클릭 시 좌표 전달 (마커 클릭은 각 마커 자체의 onClick이 처리하므로 서로 안 겹침)
+  useEffect(() => {
+    if (!mapReady || !onMapClick) return
+    const map = mapRef.current
+    const listener = window.kakao.maps.event.addListener(map, 'click', (e) => {
+      onMapClick({ lat: e.latLng.getLat(), lng: e.latLng.getLng() })
+    })
+    return () => window.kakao.maps.event.removeListener(map, 'click', listener)
+  }, [mapReady, onMapClick])
+
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        position: 'relative', // 카카오 SDK 내부 레이어(z-index 높음)가 밖으로 새어나가 다른 UI를 덮지 않도록 쌓임 맥락을 가둠
+        width: '100%',
+        height: '100%',
+        cursor: onMapClick ? 'crosshair' : 'default',
+      }}
+    />
+  )
 }
