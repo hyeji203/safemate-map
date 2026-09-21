@@ -3,8 +3,10 @@ import { Link } from 'react-router-dom'
 import { routeApi } from '../api/routeApi'
 import KakaoMap from '../components/KakaoMap'
 import ReportModal from '../components/ReportModal'
+import ReportDetail from '../components/ReportDetail'
 import { reportApi } from '../api/reportApi'
 import { colors } from '../styles/colors'
+import { categoryLabel } from '../constants/reportCategories'
 
 // 신구대학교 인근 시연 지역 중심 (tools/build_osm_graph.py의 CENTER와 동일)
 const DEMO_CENTER = { lat: 37.4488, lng: 127.1677 }
@@ -27,6 +29,7 @@ export default function MapPage() {
   const [reports, setReports] = useState([])
   const [reportMode, setReportMode] = useState(false)
   const [pendingLocation, setPendingLocation] = useState(null)
+  const [selectedReport, setSelectedReport] = useState(null)
 
   useEffect(() => {
     routeApi
@@ -106,8 +109,9 @@ export default function MapPage() {
         id: `report-${r.id}`,
         lat: r.latitude,
         lng: r.longitude,
-        title: r.category,
+        title: categoryLabel(r.category),
         color: colors.red,
+        onClick: () => setSelectedReport(r),
       })),
     [reports],
   )
@@ -241,8 +245,8 @@ export default function MapPage() {
           height: 56,
           borderRadius: '50%',
           border: 'none',
-          background: reportMode ? colors.red : colors.amber,
-          color: reportMode ? colors.white : colors.navy,
+          background: reportMode ? colors.red : colors.navy,
+          color: colors.white,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -259,6 +263,19 @@ export default function MapPage() {
         location={pendingLocation}
         onClose={() => setPendingLocation(null)}
         onSubmitted={handleSubmitted}
+      />
+
+      <ReportDetail
+        report={selectedReport}
+        onClose={() => setSelectedReport(null)}
+        onDeleted={() => {
+          setSelectedReport(null)
+          loadReports()
+        }}
+        onAddReport={(location) => {
+          setSelectedReport(null)
+          setPendingLocation(location)
+        }}
       />
     </div>
   )

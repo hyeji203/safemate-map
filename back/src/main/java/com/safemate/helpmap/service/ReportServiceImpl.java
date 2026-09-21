@@ -7,22 +7,25 @@ import com.safemate.helpmap.entity.Report;
 import com.safemate.helpmap.repository.MemberRepository;
 import com.safemate.helpmap.repository.ReportRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
+@Slf4j
 public class ReportServiceImpl implements ReportService {
 
     private final ReportRepository reportRepository;
@@ -51,6 +54,31 @@ public class ReportServiceImpl implements ReportService {
         return reportRepository.findAll().stream()
                 .map(ReportResponse::from)
                 .toList();
+    }
+
+    @Override
+    @Transactional
+    public void delete(Long reportId, String deviceId) {
+        Report report = reportRepository.findById(reportId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "존재하지 않는 제보입니다."));
+
+        String anonymousEmail = "anon:" + deviceId;
+        if (!report.getReporter().getEmail().equals(anonymousEmail)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "본인이 등록한 제보만 삭제할 수 있습니다.");
+        }
+
+        if (report.getImagePath() != null) {
+            deleteImageFile(report.getImagePath());
+        }
+        reportRepository.delete(report);
+    }
+
+    private void deleteImageFile(String relativePath) {
+        try {
+            Files.deleteIfExists(Path.of(uploadDir, relativePath));
+        } catch (IOException e) {
+            log.warn("제보 사진 삭제 실패: {}", relativePath, e);
+        }
     }
 
     /**

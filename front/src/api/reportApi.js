@@ -16,4 +16,5 @@ export const reportApi = {
     })
   },
   findAll: () => apiClient.get('/reports'),
+  remove: (id) => apiClient.delete(`/reports/${id}`, { params: { deviceId: getDeviceId() } }),
 }

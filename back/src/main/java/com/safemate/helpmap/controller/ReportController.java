@@ -37,4 +37,10 @@ public class ReportController {
     public List<ReportResponse> findAll() {
         return reportService.findAll();
     }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id, @RequestParam String deviceId) {
+        reportService.delete(id, deviceId);
+        return ResponseEntity.noContent().build();
+    }
 }
