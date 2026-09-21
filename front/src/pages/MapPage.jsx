@@ -11,6 +11,9 @@ import { categoryLabel } from '../constants/reportCategories'
 // 신구대학교 인근 시연 지역 중심 (tools/build_osm_graph.py의 CENTER와 동일)
 const DEMO_CENTER = { lat: 37.4488, lng: 127.1677 }
 
+// 가로등은 이 줌 레벨 이하(= 확대했을 때)에서만 표시 (카카오맵은 숫자가 작을수록 확대)
+const STREETLIGHT_MAX_LEVEL = 2
+
 // 메인 지도 화면 (필수 MVP).
 // - 노드 마커를 차례로 클릭하면 출발 -> 도착 최단경로(회색)와 안심경로(노랑)를 함께 그린다 (검증용, 세 번째 클릭은 초기화)
 // - 가로등(노란 작은 점) 표시
@@ -89,7 +92,9 @@ export default function MapPage() {
         lng: l.longitude,
         title: '가로등',
         color: colors.amber,
-        size: 9,
+        size: 6,
+        subtle: true,
+        maxLevel: STREETLIGHT_MAX_LEVEL,
       })),
       ...nodes.map((n) => ({
         id: n.id,
@@ -124,7 +129,9 @@ export default function MapPage() {
   // 최단경로(회색, 굵게)를 아래에, 안심경로(노랑, 가늘게)를 위에 그려 겹쳐도 둘 다 보이게 한다
   const paths = useMemo(() => {
     if (!visibleRoutes) return []
-    const toPoints = (route) => route.path.map((p) => ({ lat: p.latitude, lng: p.longitude }))
+    // geometry = 실제 도로 모양(굽은 길 포함), 없으면 교차로만 직선으로 잇는다
+    const toPoints = (route) =>
+      (route.geometry?.length ? route.geometry : route.path).map((p) => ({ lat: p.latitude, lng: p.longitude }))
     return [
       { id: 'shortest', points: toPoints(visibleRoutes.shortest), color: colors.gray, weight: 10 },
       { id: 'safe', points: toPoints(visibleRoutes.safe), color: colors.amber, weight: 5 },
