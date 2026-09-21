@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const KAKAO_JS_KEY = import.meta.env.REACT_APP_KAKAO_JS_KEY
 
@@ -22,15 +22,26 @@ function loadKakaoMapSdk() {
 }
 
 /**
- * 메인 지도 화면(필수 MVP)의 뼈대. 지도만 띄우는 상태이며,
- * 마커 표시/경로 렌더링은 2단계에서 이 컴포넌트에 props로 확장 예정.
+ * 메인 지도 컴포넌트.
+ * - markers: [{ id, lat, lng, title, color?, onClick? }] 지도 위 점 표시 (color 미지정 시 네이비)
+ * - path: [{ lat, lng }] 경로 폴리라인 (빈 배열이면 표시 안 함)
+ * - pathColor: 폴리라인 색
+ * center/level은 최초 렌더링에만 적용된다.
  */
-export default function KakaoMap({ center = { lat: 37.5665, lng: 126.978 }, level = 4 }) {
+export default function KakaoMap({
+  center = { lat: 37.5665, lng: 126.978 },
+  level = 4,
+  markers = [],
+  path = [],
+  pathColor = '#FFB020',
+}) {
   const containerRef = useRef(null)
+  const mapRef = useRef(null)
+  const [mapReady, setMapReady] = useState(false)
 
   useEffect(() => {
     if (!KAKAO_JS_KEY) {
-      console.warn('REACT_APP_KAKAO_JS_KEY가 설정되지 않았습니다. front/.env를 확인하세요.')
+      console.warn('REACT_APP_KAKAO_JS_KEY가 설정되지 않았습니다. 루트 .env를 확인하세요.')
       return
     }
 
@@ -39,17 +50,55 @@ export default function KakaoMap({ center = { lat: 37.5665, lng: 126.978 }, leve
     loadKakaoMapSdk()
       .then(() => {
         if (cancelled || !containerRef.current) return
-        new window.kakao.maps.Map(containerRef.current, {
+        mapRef.current = new window.kakao.maps.Map(containerRef.current, {
           center: new window.kakao.maps.LatLng(center.lat, center.lng),
           level,
         })
+        setMapReady(true)
       })
       .catch((err) => console.error('[KakaoMap]', err.message))
 
     return () => {
       cancelled = true
     }
-  }, [center.lat, center.lng, level])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 마커: markers가 바뀔 때마다 기존 것을 지우고 다시 그린다
+  useEffect(() => {
+    if (!mapReady) return
+    const { kakao } = window
+    const overlays = markers.map((m) => {
+      const el = document.createElement('div')
+      el.title = m.title ?? ''
+      el.style.cssText = `width:14px;height:14px;border-radius:50%;border:2px solid #fff;background:${
+        m.color ?? '#1A2B4C'
+      };box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:pointer`
+      if (m.onClick) el.addEventListener('click', () => m.onClick(m))
+      return new kakao.maps.CustomOverlay({
+        map: mapRef.current,
+        position: new kakao.maps.LatLng(m.lat, m.lng),
+        content: el,
+        yAnchor: 0.5,
+        xAnchor: 0.5,
+      })
+    })
+    return () => overlays.forEach((o) => o.setMap(null))
+  }, [mapReady, markers])
+
+  // 경로선
+  useEffect(() => {
+    if (!mapReady || path.length < 2) return
+    const { kakao } = window
+    const line = new kakao.maps.Polyline({
+      map: mapRef.current,
+      path: path.map((p) => new kakao.maps.LatLng(p.lat, p.lng)),
+      strokeWeight: 6,
+      strokeColor: pathColor,
+      strokeOpacity: 0.9,
+    })
+    return () => line.setMap(null)
+  }, [mapReady, path, pathColor])
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 }
