@@ -12,6 +12,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': 'http://localhost:8080',
+      '/uploads': 'http://localhost:8080', // 제보 첨부 사진
       '/ws-stomp': {
         target: 'http://localhost:8080',
         ws: true,
