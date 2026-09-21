@@ -1,12 +1,7 @@
 import { useState } from 'react'
 import { colors } from '../styles/colors'
 import { reportApi } from '../api/reportApi'
-
-const CATEGORIES = [
-  { value: 'STREETLIGHT_BROKEN', label: '가로등 고장' },
-  { value: 'DARK_ALLEY', label: '어두움' },
-  { value: 'EMPTY_STREET', label: '인적 드묾' },
-]
+import { REPORT_CATEGORIES as CATEGORIES } from '../constants/reportCategories'
 
 /**
  * 지도 클릭으로 좌표를 받은 뒤 뜨는 제보 등록 모달.

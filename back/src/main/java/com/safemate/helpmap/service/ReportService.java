@@ -11,4 +11,6 @@ public interface ReportService {
     ReportResponse create(ReportCreateRequest request, MultipartFile image);
 
     List<ReportResponse> findAll();
+
+    void delete(Long reportId, String deviceId);
 }

@@ -107,10 +107,12 @@ export default function KakaoMap({
   useEffect(() => {
     if (!mapReady || !onMapClick) return
     const map = mapRef.current
-    const listener = window.kakao.maps.event.addListener(map, 'click', (e) => {
+    // removeListener는 addListener에 넘겼던 함수 자체를 다시 받아야 제거되므로, 핸들러를 변수로 따로 보관한다.
+    const handleClick = (e) => {
       onMapClick({ lat: e.latLng.getLat(), lng: e.latLng.getLng() })
-    })
-    return () => window.kakao.maps.event.removeListener(map, 'click', listener)
+    }
+    window.kakao.maps.event.addListener(map, 'click', handleClick)
+    return () => window.kakao.maps.event.removeListener(map, 'click', handleClick)
   }, [mapReady, onMapClick])
 
   return (
