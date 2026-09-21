@@ -35,6 +35,10 @@ public class Report {
     @Column(nullable = false)
     private ReportCategory category;
 
+    // 업로드된 사진의 상대 경로 (예: reports/uuid.jpg). 사진 없이 제보 가능하므로 nullable.
+    @Column
+    private String imagePath;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -43,10 +47,11 @@ public class Report {
         this.createdAt = LocalDateTime.now();
     }
 
-    public Report(Member reporter, double latitude, double longitude, ReportCategory category) {
+    public Report(Member reporter, double latitude, double longitude, ReportCategory category, String imagePath) {
         this.reporter = reporter;
         this.latitude = latitude;
         this.longitude = longitude;
         this.category = category;
+        this.imagePath = imagePath;
     }
 }
