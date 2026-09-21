@@ -6,6 +6,7 @@ import com.safemate.helpmap.entity.Edge;
 import com.safemate.helpmap.entity.Node;
 import com.safemate.helpmap.repository.EdgeRepository;
 import com.safemate.helpmap.repository.NodeRepository;
+import com.safemate.helpmap.repository.ReportRepository;
 import com.safemate.helpmap.repository.StreetLightRepository;
 import com.safemate.helpmap.util.GeoUtils;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,7 @@ public class RouteServiceImpl implements RouteService {
     private final NodeRepository nodeRepository;
     private final EdgeRepository edgeRepository;
     private final StreetLightRepository streetLightRepository;
+    private final ReportRepository reportRepository;
     private final RiskWeightCalculator riskWeightCalculator;
 
     @Override
@@ -43,7 +45,9 @@ public class RouteServiceImpl implements RouteService {
         Node goal = nearestNode(nodes, toLat, toLng);
 
         List<Edge> edges = edgeRepository.findAllWithNodes();
-        Map<Long, Double> risks = riskWeightCalculator.calculate(edges, streetLightRepository.findAll());
+        // 제보를 등록하면 다음 경로 요청부터 바로 반영되도록, 요청마다 최신 제보를 읽어 위험도를 계산한다
+        Map<Long, EdgeRisk> risks = riskWeightCalculator.calculate(
+                edges, streetLightRepository.findAll(), reportRepository.findAll());
 
         Map<Long, List<Edge>> adjacency = new HashMap<>();
         for (Edge edge : edges) {
@@ -52,7 +56,7 @@ public class RouteServiceImpl implements RouteService {
 
         List<Edge> shortest = dijkstra(start, goal, adjacency, Edge::getDistanceMeters);
         List<Edge> safe = dijkstra(start, goal, adjacency,
-                e -> e.getDistanceMeters() * (1 + RISK_PENALTY * risks.get(e.getId())));
+                e -> e.getDistanceMeters() * (1 + RISK_PENALTY * risks.get(e.getId()).total()));
 
         return new RoutesResponse(toResponse(start, shortest, risks), toResponse(start, safe, risks));
     }
@@ -101,17 +105,22 @@ public class RouteServiceImpl implements RouteService {
         return path;
     }
 
-    private RouteResponse toResponse(Node start, List<Edge> pathEdges, Map<Long, Double> risks) {
+    private RouteResponse toResponse(Node start, List<Edge> pathEdges, Map<Long, EdgeRisk> risks) {
         List<RouteResponse.Point> points = new ArrayList<>();
         points.add(toPoint(start));
         double total = 0;
         double dark = 0;
+        double reported = 0;
         for (Edge edge : pathEdges) {
+            EdgeRisk risk = risks.get(edge.getId());
             points.add(toPoint(edge.getToNode()));
             total += edge.getDistanceMeters();
-            dark += edge.getDistanceMeters() * risks.get(edge.getId());
+            dark += edge.getDistanceMeters() * risk.darkness();
+            if (risk.hasReport()) {
+                reported += edge.getDistanceMeters();
+            }
         }
-        return new RouteResponse(total, (int) Math.ceil(total / WALKING_METERS_PER_MINUTE), dark, points);
+        return new RouteResponse(total, (int) Math.ceil(total / WALKING_METERS_PER_MINUTE), dark, reported, points);
     }
 
     private Node nearestNode(List<Node> nodes, double lat, double lng) {

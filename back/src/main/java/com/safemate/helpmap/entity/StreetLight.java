@@ -25,8 +25,13 @@ public class StreetLight {
     @Column(nullable = false)
     private double longitude;
 
-    public StreetLight(double latitude, double longitude) {
+    // 한 지점에 설치된 가로등 수 (공공데이터의 '설치개수')
+    @Column(nullable = false)
+    private int installCount = 1;
+
+    public StreetLight(double latitude, double longitude, int installCount) {
         this.latitude = latitude;
         this.longitude = longitude;
+        this.installCount = installCount;
     }
 }

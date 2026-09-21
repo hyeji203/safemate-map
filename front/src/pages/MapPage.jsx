@@ -6,7 +6,7 @@ import ReportModal from '../components/ReportModal'
 import { reportApi } from '../api/reportApi'
 import { colors } from '../styles/colors'
 
-// 신구대학교 인근 시연 지역 중심 (백엔드 GridSeedLoader의 임시 중심 좌표와 동일)
+// 신구대학교 인근 시연 지역 중심 (tools/build_osm_graph.py의 CENTER와 동일)
 const DEMO_CENTER = { lat: 37.4488, lng: 127.1677 }
 
 // 메인 지도 화면 (필수 MVP).
@@ -20,6 +20,7 @@ export default function MapPage() {
   const [start, setStart] = useState(null)
   const [end, setEnd] = useState(null)
   const [routes, setRoutes] = useState(null) // { shortest, safe }
+  const [routeRefreshKey, setRouteRefreshKey] = useState(0) // 제보 등록 후 경로를 다시 계산하기 위한 트리거
   const [error, setError] = useState(null)
 
   // 제보 (제보하기 담당)
@@ -50,7 +51,7 @@ export default function MapPage() {
         setError(null)
       })
       .catch(() => setError('경로를 찾지 못했습니다.'))
-  }, [start, end])
+  }, [start, end, routeRefreshKey])
 
   const loadReports = useCallback(async () => {
     try {
@@ -135,6 +136,8 @@ export default function MapPage() {
   const handleSubmitted = () => {
     setPendingLocation(null)
     loadReports()
+    // 새 제보가 위험도에 반영되도록, 이미 경로가 표시돼 있으면 다시 계산한다
+    setRouteRefreshKey((k) => k + 1)
   }
 
   return (
@@ -268,7 +271,7 @@ function RouteLine({ label, color, route }) {
       <strong>{label}</strong>
       <span>
         {Math.round(route.totalDistanceMeters)}m · 약 {route.estimatedMinutes}분 · 어두운 구간{' '}
-        {Math.round(route.darkDistanceMeters)}m
+        {Math.round(route.darkDistanceMeters)}m · 제보 구간 {Math.round(route.reportedDistanceMeters)}m
       </span>
     </div>
   )
