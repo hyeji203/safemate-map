@@ -11,6 +11,7 @@ const DEMO_CENTER = { lat: 37.4488, lng: 127.1677 }
 // 1단계 검증용: 노드 마커를 차례로 클릭하면 출발 -> 도착 최단경로를 그린다 (세 번째 클릭은 초기화).
 export default function MapPage() {
   const [nodes, setNodes] = useState([])
+  const [streetLights, setStreetLights] = useState([])
   const [start, setStart] = useState(null)
   const [end, setEnd] = useState(null)
   const [route, setRoute] = useState(null)
@@ -21,6 +22,13 @@ export default function MapPage() {
       .findNodes()
       .then((res) => setNodes(res.data))
       .catch(() => setError('노드 목록을 불러오지 못했습니다.'))
+  }, [])
+
+  useEffect(() => {
+    routeApi
+      .findStreetLights()
+      .then((res) => setStreetLights(res.data))
+      .catch(() => setError('가로등 목록을 불러오지 못했습니다.'))
   }, [])
 
   useEffect(() => {
@@ -47,8 +55,16 @@ export default function MapPage() {
   )
 
   const markers = useMemo(
-    () =>
-      nodes.map((n) => ({
+    () => [
+      ...streetLights.map((l) => ({
+        id: `light-${l.id}`,
+        lat: l.latitude,
+        lng: l.longitude,
+        title: '가로등',
+        color: colors.amber,
+        size: 9,
+      })),
+      ...nodes.map((n) => ({
         id: n.id,
         lat: n.latitude,
         lng: n.longitude,
@@ -56,7 +72,8 @@ export default function MapPage() {
         color: n.id === start?.id ? colors.amber : n.id === end?.id ? colors.red : colors.navy,
         onClick: handleNodeClick,
       })),
-    [nodes, start, end, handleNodeClick],
+    ],
+    [nodes, streetLights, start, end, handleNodeClick],
   )
 
   // 출발/도착 중 하나라도 초기화되면 이전 경로는 숨긴다

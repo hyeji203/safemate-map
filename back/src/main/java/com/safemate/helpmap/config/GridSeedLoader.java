@@ -8,6 +8,7 @@ import com.safemate.helpmap.util.GeoUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -15,11 +16,11 @@ import java.util.List;
 
 /**
  * 1단계 검증용 더미 그래프. 신구대학교 인근(성남시 중원구)을 중심으로 5x5 격자(노드 25개)를 만든다.
- * 실제 교차로 좌표는 팀이 카카오맵에서 딴 뒤 이 로더의 데이터를 교체할 것 (좌표는 임시값).
  * nodes 테이블이 비어 있을 때만 동작한다.
  */
 @Slf4j
 @Component
+@Order(1)
 @RequiredArgsConstructor
 public class GridSeedLoader implements CommandLineRunner {
 

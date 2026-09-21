@@ -23,7 +23,7 @@ function loadKakaoMapSdk() {
 
 /**
  * 메인 지도 컴포넌트.
- * - markers: [{ id, lat, lng, title, color?, onClick? }] 지도 위 점 표시 (color 미지정 시 네이비)
+ * - markers: [{ id, lat, lng, title, color?, size?, onClick? }] 지도 위 점 표시 (color 미지정 시 네이비, size 미지정 시 14px)
  * - path: [{ lat, lng }] 경로 폴리라인 (빈 배열이면 표시 안 함)
  * - pathColor: 폴리라인 색
  * center/level은 최초 렌더링에만 적용된다.
@@ -71,9 +71,10 @@ export default function KakaoMap({
     const overlays = markers.map((m) => {
       const el = document.createElement('div')
       el.title = m.title ?? ''
-      el.style.cssText = `width:14px;height:14px;border-radius:50%;border:2px solid #fff;background:${
+      const size = m.size ?? 14
+      el.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;border:2px solid #fff;background:${
         m.color ?? '#1A2B4C'
-      };box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:pointer`
+      };box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:${m.onClick ? 'pointer' : 'default'}`
       if (m.onClick) el.addEventListener('click', () => m.onClick(m))
       return new kakao.maps.CustomOverlay({
         map: mapRef.current,
