@@ -4,6 +4,7 @@ import { colors } from '../styles/colors'
 export default function LoginPage() {
   return (
     <div style={{ padding: 16 }}>
+      <img src="/logo.svg" alt="도와줘, 맵!" width={72} height={72} style={{ display: 'block', margin: '24px auto 16px' }} />
       <h2 style={{ color: colors.navy }}>로그인</h2>
       <form style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <input type="email" placeholder="이메일" style={inputStyle} />
