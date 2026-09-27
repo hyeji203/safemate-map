@@ -38,6 +38,11 @@ public class ReportController {
         return reportService.findAll();
     }
 
+    @GetMapping("/mine")
+    public List<ReportResponse> findMine(@RequestParam String deviceId) {
+        return reportService.findMine(deviceId);
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id, @RequestParam String deviceId) {
         reportService.delete(id, deviceId);

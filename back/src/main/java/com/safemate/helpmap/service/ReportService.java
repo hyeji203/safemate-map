@@ -12,5 +12,7 @@ public interface ReportService {
 
     List<ReportResponse> findAll();
 
+    List<ReportResponse> findMine(String deviceId);
+
     void delete(Long reportId, String deviceId);
 }
