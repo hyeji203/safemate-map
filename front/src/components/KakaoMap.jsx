@@ -27,6 +27,7 @@ function loadKakaoMapSdk() {
  *   제보 마커는 color를 위험색(red)으로, 경로 노드는 선택 상태에 따른 색으로 넘기는 식으로 호출부에서 합쳐서 사용한다.
  * - paths: [{ id, points: [{ lat, lng }], color, weight? }] 경로 폴리라인 목록 (뒤쪽 항목이 위에 그려짐)
  * - onMapClick: 마커가 아닌 빈 지도 영역을 클릭했을 때 좌표 콜백 (제보 위치 선택용)
+ * - focus: { lat, lng, level? } 이 값이 바뀔 때마다 지도를 그 위치로 이동한다 (검색한 장소 보여주기용)
  * center/level은 최초 렌더링에만 적용된다.
  */
 export default function KakaoMap({
@@ -35,6 +36,7 @@ export default function KakaoMap({
   markers = [],
   paths = [],
   onMapClick,
+  focus,
 }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
@@ -115,6 +117,14 @@ export default function KakaoMap({
       )
     return () => lines.forEach((l) => l.setMap(null))
   }, [mapReady, paths])
+
+  // focus가 바뀌면 그 위치로 부드럽게 이동 (레벨을 먼저 맞춘 뒤 panTo)
+  useEffect(() => {
+    if (!mapReady || !focus) return
+    const map = mapRef.current
+    if (focus.level != null) map.setLevel(focus.level)
+    map.panTo(new window.kakao.maps.LatLng(focus.lat, focus.lng))
+  }, [mapReady, focus])
 
   // 지도 빈 공간 클릭 시 좌표 전달 (마커 클릭은 각 마커 자체의 onClick이 처리하므로 서로 안 겹침)
   useEffect(() => {

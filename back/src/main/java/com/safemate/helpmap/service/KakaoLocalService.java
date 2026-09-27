@@ -54,8 +54,21 @@ public class KakaoLocalService {
                         d.roadAddressName() != null && !d.roadAddressName().isBlank()
                                 ? d.roadAddressName() : d.addressName(),
                         Double.parseDouble(d.y()),
-                        Double.parseDouble(d.x())))
+                        Double.parseDouble(d.x()),
+                        lastCategory(d.categoryName()),
+                        d.phone() == null ? "" : d.phone(),
+                        d.placeUrl(),
+                        d.distance() == null || d.distance().isBlank() ? 0 : Integer.parseInt(d.distance())))
                 .toList();
+    }
+
+    /** "음식점 > 간식 > 아이스크림" 에서 마지막 단계만 돌려준다 */
+    private String lastCategory(String categoryName) {
+        if (categoryName == null || categoryName.isBlank()) {
+            return "";
+        }
+        String[] parts = categoryName.split(">");
+        return parts[parts.length - 1].trim();
     }
 
     /** 카카오 키워드 검색 API 응답 중 필요한 필드만 옮겨 담는 파싱용 DTO. */
@@ -64,6 +77,11 @@ public class KakaoLocalService {
                 @JsonProperty("place_name") String placeName,
                 @JsonProperty("address_name") String addressName,
                 @JsonProperty("road_address_name") String roadAddressName,
+                @JsonProperty("category_name") String categoryName,
+                String phone,
+                @JsonProperty("place_url") String placeUrl,
+                // 요청에 x, y를 넘겼을 때만 채워지는 중심점과의 거리(m, 문자열)
+                String distance,
                 String x,
                 String y) {
         }
