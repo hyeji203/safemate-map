@@ -6,7 +6,7 @@ import ReportModal from '../components/ReportModal'
 import ReportDetail from '../components/ReportDetail'
 import { reportApi } from '../api/reportApi'
 import { colors } from '../styles/colors'
-import { categoryLabel } from '../constants/reportCategories'
+import { categoryLabel, categoryIcon } from '../constants/reportCategories'
 
 // 신구대학교 인근 시연 지역 중심 (tools/build_osm_graph.py의 CENTER와 동일)
 const DEMO_CENTER = { lat: 37.4488, lng: 127.1677 }
@@ -116,6 +116,8 @@ export default function MapPage() {
         lng: r.longitude,
         title: categoryLabel(r.category),
         color: colors.red,
+        size: 22,
+        icon: categoryIcon(r.category),
         onClick: () => setSelectedReport(r),
       })),
     [reports],

@@ -20,6 +20,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -91,12 +92,24 @@ public class ReportServiceImpl implements ReportService {
                 .orElseGet(() -> memberRepository.save(new Member(anonymousEmail, "", "익명 사용자")));
     }
 
+    // 허용 이미지 타입 -> 저장 확장자. 클라이언트가 보낸 원본 파일명은 신뢰하지 않고,
+    // 서버가 검증한 Content-Type으로만 확장자를 정해서 위험한 확장자(.jsp 등) 업로드를 막는다.
+    private static final Map<String, String> ALLOWED_IMAGE_TYPES = Map.of(
+            "image/jpeg", ".jpg",
+            "image/png", ".png",
+            "image/gif", ".gif",
+            "image/webp", ".webp"
+    );
+
     private String storeImage(MultipartFile image) {
+        String extension = ALLOWED_IMAGE_TYPES.get(image.getContentType());
+        if (extension == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "이미지 파일(jpg, png, gif, webp)만 첨부할 수 있습니다.");
+        }
         try {
             Path baseDir = Path.of(uploadDir, "reports");
             Files.createDirectories(baseDir);
 
-            String extension = getExtension(image.getOriginalFilename());
             String filename = UUID.randomUUID() + extension;
             Path target = baseDir.resolve(filename);
             image.transferTo(target);
@@ -105,10 +118,5 @@ public class ReportServiceImpl implements ReportService {
         } catch (IOException e) {
             throw new UncheckedIOException("제보 사진 저장 실패", e);
         }
-    }
-
-    private String getExtension(String originalFilename) {
-        if (originalFilename == null || !originalFilename.contains(".")) return "";
-        return originalFilename.substring(originalFilename.lastIndexOf('.'));
     }
 }

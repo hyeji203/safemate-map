@@ -85,6 +85,14 @@ export default function KakaoMap({
         };opacity:${m.subtle ? 0.7 : 1};box-shadow:${
           m.subtle ? 'none' : '0 1px 4px rgba(0,0,0,.4)'
         };cursor:${m.onClick ? 'pointer' : 'default'}`
+        if (m.icon) {
+          el.style.display = 'flex'
+          el.style.alignItems = 'center'
+          el.style.justifyContent = 'center'
+          el.style.fontSize = `${Math.round(size * 0.65)}px`
+          el.style.lineHeight = '1'
+          el.textContent = m.icon
+        }
         if (m.onClick) el.addEventListener('click', () => m.onClick(m))
         return new kakao.maps.CustomOverlay({
           map: mapRef.current,
