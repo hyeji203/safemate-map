@@ -19,9 +19,9 @@ from pathlib import Path
 
 # 시연 지역: 신구대학교(성남시 중원구 금광동) 중심, 카카오 로컬 API 키워드 검색 결과
 CENTER = (37.4488, 127.1677)
-# 시연 범위. 400m = 노드 156개/간선 224개(걸어서 5~8분 경로, 간선도로 회피 시연 가능).
-# 참고: 220m = 노드 25개, 250m = 62개, 500m = 273개
-RADIUS_METERS = 400
+# 시연 범위. 단대오거리역(8호선)까지 실제 경로가 나오도록 반경을 늘림 (신구대~단대오거리역 직선거리 약 1050m + 여유분).
+# 참고: 220m = 노드 25개, 250m = 62개, 400m = 156개, 500m = 273개
+RADIUS_METERS = 1150
 
 # 보행 가능한 것으로 보는 도로 종류
 WALKABLE = {
@@ -31,12 +31,57 @@ WALKABLE = {
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "back" / "src" / "main" / "resources" / "data"
 
+# 교차로 판정 로직(모든 way의 끝점 = 교차로)이 만드는 부작용: 같은 실제 교차로인데
+# OSM에서 도로가 여러 way로 쪼개져 있으면(사이클링/보도 태그가 달라지는 지점 등) 그 경계마다
+# 좌표가 살짝 다른 노드가 하나씩 더 생긴다. 이 거리 이내면 같은 교차로로 보고 하나로 합친다.
+JUNCTION_MERGE_METERS = 12
+
 
 def haversine(lat1, lng1, lat2, lng2):
     r = 6371000
     p1, p2 = math.radians(lat1), math.radians(lat2)
     a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lng2 - lng1) / 2) ** 2
     return 2 * r * math.asin(math.sqrt(a))
+
+
+def merge_close_junctions(junction_ids, pos):
+    """threshold 이내로 가까운 교차로 노드들을 대표 id 하나로 묶어 {원래id: 대표id}를 반환한다."""
+    parent = {n: n for n in junction_ids}
+
+    def find(n):
+        while parent[n] != n:
+            parent[n] = parent[parent[n]]
+            n = parent[n]
+        return n
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    # 격자에 담아서 근처 후보만 비교한다 (전체 쌍 비교로는 노드가 많을 때 느려짐)
+    cell_size = JUNCTION_MERGE_METERS / 111_000  # 위도 기준 대략적인 도(degree) 크기
+    grid = collections.defaultdict(list)
+
+    def cell_of(n):
+        lat, lng = pos[n]
+        return (int(lat / cell_size), int(lng / cell_size))
+
+    for n in junction_ids:
+        grid[cell_of(n)].append(n)
+
+    for n in junction_ids:
+        lat, lng = pos[n]
+        cx, cy = cell_of(n)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for m in grid.get((cx + dx, cy + dy), []):
+                    if m == n or find(m) == find(n):
+                        continue
+                    if haversine(lat, lng, *pos[m]) <= JUNCTION_MERGE_METERS:
+                        union(n, m)
+
+    return {n: find(n) for n in junction_ids}
 
 
 def fetch_osm_xml():
@@ -81,6 +126,9 @@ def build_graph(xml_bytes):
         if inside(n) and (usage[n] >= 2 or i in (0, len(nds) - 1))
     }
 
+    # 같은 실제 교차로가 way 경계 때문에 여러 노드로 쪼개진 경우를 하나로 합친다 (위 JUNCTION_MERGE_METERS 참고)
+    merge = merge_close_junctions(junctions, pos)
+
     # 교차로 사이 도로 구간을 간선으로 만든다 (길이는 도로를 따라 누적, 도로 모양 좌표도 함께 저장)
     # edges[(a, b)] = (길이, 도로종류, [(lat, lng), ...] a->b 방향)
     edges = {}
@@ -95,12 +143,13 @@ def build_graph(xml_bytes):
                 pts.append(pos[n])
             prev = n
             if n in junctions:
-                if last is not None and last != n:
-                    key = (min(last, n), max(last, n))
+                node_id = merge[n]
+                if last is not None and last != node_id:
+                    key = (min(last, node_id), max(last, node_id))
                     shape = pts if key[0] == last else pts[::-1]
                     if key not in edges or acc < edges[key][0]:
                         edges[key] = (acc, highway, shape)
-                last, acc, pts = n, 0.0, [pos[n]]
+                last, acc, pts = node_id, 0.0, [pos[n]]
             elif not inside(n):
                 last, pts = None, []
 
