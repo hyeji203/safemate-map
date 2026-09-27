@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-/** 경로 탐색 화면의 출발지/도착지 주소 검색. 카카오 REST API 키는 서버에서만 사용한다. */
+/** 지도 화면의 장소·주소 검색 (출발지/도착지 지정용). 카카오 REST API 키는 서버에서만 사용한다. */
 @RestController
 @RequestMapping("/api/places")
 @RequiredArgsConstructor
