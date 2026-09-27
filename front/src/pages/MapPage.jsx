@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useLocation } from 'react-router-dom'
 import { routeApi } from '../api/routeApi'
 import KakaoMap from '../components/KakaoMap'
 import PlaceSearchBar from '../components/PlaceSearchBar'
@@ -26,7 +25,6 @@ const GRAPH_NODE_MAX_LEVEL = 3
 // - 가로등(노란 작은 점) 표시
 // - 제보 마커 표시 + 지도 빈 공간 클릭으로 제보 등록까지 연결됨
 export default function MapPage() {
-  const location = useLocation()
 
   // 경로 탐색 (지도&경로 담당)
   const [nodes, setNodes] = useState([])
@@ -60,14 +58,6 @@ export default function MapPage() {
       .then((res) => setStreetLights(res.data))
       .catch(() => setError('가로등 목록을 불러오지 못했습니다.'))
   }, [])
-
-  // RouteSearchPage에서 주소 검색으로 확정한 좌표가 넘어오면 출발/도착으로 반영한다
-  useEffect(() => {
-    const searched = location.state
-    if (!searched?.start || !searched?.end) return
-    setStart({ id: 'search-start', lat: searched.start.lat, lng: searched.start.lng, title: searched.start.name })
-    setEnd({ id: 'search-end', lat: searched.end.lat, lng: searched.end.lng, title: searched.end.name })
-  }, [location.state])
 
   useEffect(() => {
     if (!start || !end) return

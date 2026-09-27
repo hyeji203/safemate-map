@@ -4,7 +4,7 @@ import { placeApi } from '../api/placeApi'
 // 입력 후 이 시간(ms) 동안 추가 입력이 없을 때만 검색 요청을 보낸다 (타이핑마다 호출 방지)
 const SEARCH_DEBOUNCE_MS = 300
 
-// 장소 검색창 하나의 검색 상태 + 로직. 지도 화면 검색창과 경로 탐색 화면의 출발지/도착지 칸에서 같이 쓴다.
+// 장소 검색창 하나의 검색 상태 + 로직 (지도 화면 상단 검색창에서 사용)
 export function usePlaceSearch() {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])

@@ -11,7 +11,7 @@ import java.util.List;
 
 /**
  * 카카오 로컬 API(REST API 키 사용) 연동 서비스.
- * 경로 탐색 화면의 출발지/도착지 주소·장소 검색에 사용. REST API 키는 서버 전용이므로 절대 프론트로 내려주지 않는다.
+ * 지도 화면의 장소·주소 검색(출발지/도착지 지정)에 사용. REST API 키는 서버 전용이므로 절대 프론트로 내려주지 않는다.
  */
 @Service
 public class KakaoLocalService {
