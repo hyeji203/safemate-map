@@ -17,9 +17,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 공공데이터(성남시 중원구 보안등 정보 현황, 데이터기준일자 2025-11-27)에서 시연 지역(신구대학교 반경 1km)만 추려
+ * 공공데이터(성남시 중원구 보안등 정보 현황, 데이터기준일자 2025-11-27)에서 시연 지역만 추려
  * resources/data/street-lights.csv 로 넣어 둔 실제 가로등 위치를 적재한다.
- * street_lights 테이블이 비어 있을 때만 동작한다. 컬럼: name,installCount,latitude,longitude (UTF-8, 쉼표 포함 값 없음)
+ * tools/build_streetlights_csv.py 가 만들며, 보행로 그래프 반경(tools/build_osm_graph.py)보다 넉넉하게 자른다.
+ * DB의 개수가 CSV와 같으면 그대로 두고, 다르면(CSV를 새로 만들어 반경이 바뀐 경우 등) 다시 적재한다.
+ * 컬럼: name,installCount,latitude,longitude (UTF-8, 쉼표 포함 값 없음)
  */
 @Slf4j
 @Component
@@ -33,10 +35,6 @@ public class StreetLightCsvLoader implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws IOException {
-        if (streetLightRepository.count() > 0) {
-            return;
-        }
-
         List<StreetLight> lights = new ArrayList<>();
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(new ClassPathResource(CSV_PATH).getInputStream(), StandardCharsets.UTF_8))) {
@@ -53,6 +51,11 @@ public class StreetLightCsvLoader implements CommandLineRunner {
                 lights.add(new StreetLight(latitude, longitude, Math.max(1, installCount)));
             }
         }
+
+        if (streetLightRepository.count() == lights.size()) {
+            return;
+        }
+        streetLightRepository.deleteAllInBatch();
         streetLightRepository.saveAll(lights);
         log.info("가로등 CSV 적재: {}개 지점", lights.size());
     }

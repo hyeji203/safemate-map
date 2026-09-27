@@ -27,6 +27,8 @@ public class RouteServiceImpl implements RouteService {
     private static final double WALKING_METERS_PER_MINUTE = 4000.0 / 60;
     // 위험도 1(가로등 없음)인 간선의 비용을 거리의 (1 + 이 값)배로 계산. 클수록 멀리 돌아서라도 밝은 길을 택한다
     private static final double RISK_PENALTY = 2.0;
+    // 스냅 거리(요청 좌표 <-> 가장 가까운 노드)가 이보다 작으면 사실상 같은 지점으로 보고 별도 구간을 만들지 않는다
+    private static final double SNAP_GAP_THRESHOLD_METERS = 3;
 
     private final NodeRepository nodeRepository;
     private final EdgeRepository edgeRepository;
@@ -60,7 +62,9 @@ public class RouteServiceImpl implements RouteService {
         List<Edge> safe = dijkstra(start, goal, adjacency,
                 e -> walkingCost.applyAsDouble(e) * (1 + RISK_PENALTY * risks.get(e.getId()).total()));
 
-        return new RoutesResponse(toResponse(start, shortest, risks), toResponse(start, safe, risks));
+        return new RoutesResponse(
+                toResponse(fromLat, fromLng, toLat, toLng, start, goal, shortest, risks),
+                toResponse(fromLat, fromLng, toLat, toLng, start, goal, safe, risks));
     }
 
     /** 주어진 비용 함수 기준 최소 비용 경로의 간선 목록을 반환한다. */
@@ -107,19 +111,30 @@ public class RouteServiceImpl implements RouteService {
         return path;
     }
 
-    private RouteResponse toResponse(Node start, List<Edge> pathEdges, Map<Long, EdgeRisk> risks) {
+    private RouteResponse toResponse(double fromLat, double fromLng, double toLat, double toLng,
+                                     Node start, Node goal, List<Edge> pathEdges, Map<Long, EdgeRisk> risks) {
         List<RouteResponse.Point> points = new ArrayList<>();
         points.add(toPoint(start));
         List<RouteResponse.LatLng> geometry = new ArrayList<>();
         double total = 0;
         double dark = 0;
         double reported = 0;
+
+        // 요청 좌표(예: 검색으로 찍은 건물 위치)는 그래프 노드와 정확히 일치하지 않을 수 있다.
+        // 그 사이는 도로 데이터가 없어 직선으로 이어주고, 거리/소요시간에도 반영한다.
+        double startGap = GeoUtils.haversineMeters(fromLat, fromLng, start.getLatitude(), start.getLongitude());
+        if (startGap > SNAP_GAP_THRESHOLD_METERS) {
+            geometry.add(new RouteResponse.LatLng(fromLat, fromLng));
+            total += startGap;
+        }
+        geometry.add(new RouteResponse.LatLng(start.getLatitude(), start.getLongitude()));
+
         for (Edge edge : pathEdges) {
             EdgeRisk risk = risks.get(edge.getId());
             points.add(toPoint(edge.getToNode()));
-            // 간선 시작점은 직전 간선의 끝점과 같으므로 첫 간선을 뺀 나머지는 첫 좌표를 건너뛴다
+            // 간선 시작점은 직전에 추가한 좌표(이전 간선의 끝점, 또는 시작 노드)와 같으므로 건너뛴다
             List<double[]> shape = edge.polyline();
-            for (int i = geometry.isEmpty() ? 0 : 1; i < shape.size(); i++) {
+            for (int i = 1; i < shape.size(); i++) {
                 geometry.add(new RouteResponse.LatLng(shape.get(i)[0], shape.get(i)[1]));
             }
             total += edge.getDistanceMeters();
@@ -128,6 +143,13 @@ public class RouteServiceImpl implements RouteService {
                 reported += edge.getDistanceMeters();
             }
         }
+
+        double endGap = GeoUtils.haversineMeters(goal.getLatitude(), goal.getLongitude(), toLat, toLng);
+        if (endGap > SNAP_GAP_THRESHOLD_METERS) {
+            geometry.add(new RouteResponse.LatLng(toLat, toLng));
+            total += endGap;
+        }
+
         return new RouteResponse(total, (int) Math.ceil(total / WALKING_METERS_PER_MINUTE), dark, reported, points, geometry);
     }
 

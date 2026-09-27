@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { routeApi } from '../api/routeApi'
 import KakaoMap from '../components/KakaoMap'
 import ReportModal from '../components/ReportModal'
@@ -13,12 +13,16 @@ const DEMO_CENTER = { lat: 37.4488, lng: 127.1677 }
 
 // 가로등은 이 줌 레벨 이하(= 확대했을 때)에서만 표시 (카카오맵은 숫자가 작을수록 확대)
 const STREETLIGHT_MAX_LEVEL = 2
+// 보행로 그래프 노드(교차로)도 반경 확대(1150m)로 1,200개가 넘어 가로등과 같은 방식으로 확대했을 때만 표시
+const GRAPH_NODE_MAX_LEVEL = 3
 
 // 메인 지도 화면 (필수 MVP).
 // - 노드 마커를 차례로 클릭하면 출발 -> 도착 최단경로(회색)와 안심경로(노랑)를 함께 그린다 (검증용, 세 번째 클릭은 초기화)
 // - 가로등(노란 작은 점) 표시
 // - 제보 마커 표시 + 지도 빈 공간 클릭으로 제보 등록까지 연결됨
 export default function MapPage() {
+  const location = useLocation()
+
   // 경로 탐색 (지도&경로 담당)
   const [nodes, setNodes] = useState([])
   const [streetLights, setStreetLights] = useState([])
@@ -47,6 +51,14 @@ export default function MapPage() {
       .then((res) => setStreetLights(res.data))
       .catch(() => setError('가로등 목록을 불러오지 못했습니다.'))
   }, [])
+
+  // RouteSearchPage에서 주소 검색으로 확정한 좌표가 넘어오면 출발/도착으로 반영한다
+  useEffect(() => {
+    const searched = location.state
+    if (!searched?.start || !searched?.end) return
+    setStart({ id: 'search-start', lat: searched.start.lat, lng: searched.start.lng, title: searched.start.name })
+    setEnd({ id: 'search-end', lat: searched.end.lat, lng: searched.end.lng, title: searched.end.name })
+  }, [location.state])
 
   useEffect(() => {
     if (!start || !end) return
@@ -96,17 +108,34 @@ export default function MapPage() {
         subtle: true,
         maxLevel: STREETLIGHT_MAX_LEVEL,
       })),
-      ...nodes.map((n) => ({
-        id: n.id,
-        lat: n.latitude,
-        lng: n.longitude,
-        title: n.name,
-        color: n.id === start?.id ? colors.amber : n.id === end?.id ? colors.red : colors.navy,
-        onClick: handleNodeClick,
-      })),
+      ...nodes.map((n) => {
+        const isSelected = n.id === start?.id || n.id === end?.id
+        return {
+          id: n.id,
+          lat: n.latitude,
+          lng: n.longitude,
+          title: n.name,
+          color: n.id === start?.id ? colors.amber : n.id === end?.id ? colors.red : colors.navy,
+          onClick: handleNodeClick,
+          // 선택된 출발/도착 노드는 줌 레벨과 무관하게 계속 보이고, 나머지 노드(1,200개+)는 확대했을 때만 표시
+          maxLevel: isSelected ? undefined : GRAPH_NODE_MAX_LEVEL,
+        }
+      }),
     ],
     [nodes, streetLights, start, end, handleNodeClick],
   )
+
+  // 주소 검색으로 정한 출발/도착은 그래프 노드가 아닐 수 있으므로, 그럴 때만 별도 핀으로 표시한다
+  const searchedPointMarkers = useMemo(() => {
+    const points = []
+    if (start && !nodes.some((n) => n.id === start.id)) {
+      points.push({ id: start.id, lat: start.lat, lng: start.lng, title: start.title ?? '출발지', color: colors.amber, size: 20 })
+    }
+    if (end && !nodes.some((n) => n.id === end.id)) {
+      points.push({ id: end.id, lat: end.lat, lng: end.lng, title: end.title ?? '도착지', color: colors.red, size: 20 })
+    }
+    return points
+  }, [start, end, nodes])
 
   const reportMarkers = useMemo(
     () =>
@@ -121,7 +150,10 @@ export default function MapPage() {
     [reports],
   )
 
-  const allMarkers = useMemo(() => [...routeMarkers, ...reportMarkers], [routeMarkers, reportMarkers])
+  const allMarkers = useMemo(
+    () => [...routeMarkers, ...reportMarkers, ...searchedPointMarkers],
+    [routeMarkers, reportMarkers, searchedPointMarkers],
+  )
 
   // 출발/도착 중 하나라도 초기화되면 이전 경로는 숨긴다
   const visibleRoutes = start && end ? routes : null
@@ -155,7 +187,7 @@ export default function MapPage() {
     <div style={{ position: 'relative', height: '100%' }}>
       <KakaoMap
         center={DEMO_CENTER}
-        level={3}
+        level={6} // 시연 지역 반경이 1150m라 처음부터 단대오거리역까지 한눈에 보이도록 축소
         markers={allMarkers}
         paths={paths}
         onMapClick={reportMode ? handleMapClick : undefined}
