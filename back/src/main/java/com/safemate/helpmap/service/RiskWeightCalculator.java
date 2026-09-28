@@ -21,8 +21,9 @@ public class RiskWeightCalculator {
 
     // 간선(선분)에서 이 거리 이내의 가로등만 그 간선을 밝히는 것으로 본다
     static final double LIGHT_RADIUS_METERS = 25;
-    // 이 개수 이상의 가로등이 있으면 어두움 0. 실제 데이터로 교체할 때 가로등 간격에 맞춰 조정할 것
-    static final int LIGHTS_FOR_FULL_SAFETY = 1;
+    // 간선 길이 이만큼마다 가로등이 1개씩 있으면 어두움 0. 개수만 보면 20m 길과 200m 길이 같은 기준을 받으므로
+    // 길이 대비 밀도로 본다. 짧은 간선도 최소 1개는 있어야 밝은 것으로 본다
+    static final double METERS_PER_LIGHT = 40;
 
     // 간선에서 이 거리 이내의 제보를 그 간선의 위험으로 본다
     static final double REPORT_RADIUS_METERS = 25;
@@ -39,7 +40,8 @@ public class RiskWeightCalculator {
             long reportCount = countNear(edge, reports, REPORT_RADIUS_METERS,
                     Report::getLatitude, Report::getLongitude, r -> 1);
 
-            double darkness = Math.max(0, 1.0 - (double) lightCount / LIGHTS_FOR_FULL_SAFETY);
+            double lightsNeeded = Math.max(1, edge.getDistanceMeters() / METERS_PER_LIGHT);
+            double darkness = Math.max(0, 1.0 - lightCount / lightsNeeded);
             double reportRisk = Math.min(1.0, (double) reportCount / REPORTS_FOR_FULL_RISK);
             risks.put(edge.getId(), new EdgeRisk(darkness, reportRisk));
         }

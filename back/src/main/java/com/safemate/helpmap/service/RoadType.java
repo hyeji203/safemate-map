@@ -19,8 +19,11 @@ final class RoadType {
             Map.entry("track", 1.2),
             Map.entry("tertiary", 1.2),
             Map.entry("tertiary_link", 1.2),
-            Map.entry("secondary", 1.5),
-            Map.entry("secondary_link", 1.5),
+            // secondary는 대체로 보도가 확보된 간선도로다(예: 광명로는 OSM에 sidewalk=both로 명시돼 있음).
+            // residential과 동일하게 잡아서, 실제로는 큰 차이 안 나는 거리인데 큰 도로라는 이유만으로
+            // 부자연스럽게 좁은 골목으로 돌아가지 않게 한다. 다만 정말 차량 위주인 primary는 그대로 높게 둔다.
+            Map.entry("secondary", 1.0),
+            Map.entry("secondary_link", 1.0),
             Map.entry("primary", 2.0),
             Map.entry("primary_link", 2.0),
             Map.entry("steps", 2.5));

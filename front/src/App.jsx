@@ -1,7 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import BottomNav from './components/BottomNav'
 import MapPage from './pages/MapPage'
-import RouteSearchPage from './pages/RouteSearchPage'
 import RouteDetailPage from './pages/RouteDetailPage'
 import LoginPage from './pages/LoginPage'
 import MyPage from './pages/MyPage'
@@ -22,7 +21,6 @@ function App() {
         <main style={{ flex: 1, overflow: 'auto' }}>
           <Routes>
             <Route path="/" element={<MapPage />} />
-            <Route path="/route-search" element={<RouteSearchPage />} />
             <Route path="/route-detail" element={<RouteDetailPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/notifications" element={<PlaceholderPage title="알림" />} />
