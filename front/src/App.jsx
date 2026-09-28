@@ -3,6 +3,7 @@ import BottomNav from './components/BottomNav'
 import MapPage from './pages/MapPage'
 import RouteDetailPage from './pages/RouteDetailPage'
 import LoginPage from './pages/LoginPage'
+import MyPage from './pages/MyPage'
 import PlaceholderPage from './pages/PlaceholderPage'
 import { colors } from './styles/colors'
 
@@ -22,9 +23,8 @@ function App() {
             <Route path="/" element={<MapPage />} />
             <Route path="/route-detail" element={<RouteDetailPage />} />
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/favorites" element={<PlaceholderPage title="즐겨찾기" />} />
             <Route path="/notifications" element={<PlaceholderPage title="알림" />} />
-            <Route path="/my" element={<PlaceholderPage title="마이페이지" />} />
+            <Route path="/my" element={<MyPage />} />
           </Routes>
         </main>
         <BottomNav />

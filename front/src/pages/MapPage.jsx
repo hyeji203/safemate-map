@@ -8,7 +8,7 @@ import ReportModal from '../components/ReportModal'
 import ReportDetail from '../components/ReportDetail'
 import { reportApi } from '../api/reportApi'
 import { colors } from '../styles/colors'
-import { categoryLabel } from '../constants/reportCategories'
+import { categoryLabel, categoryIcon } from '../constants/reportCategories'
 
 // 신구대학교 인근 시연 지역 중심 (tools/build_osm_graph.py의 CENTER와 동일)
 const DEMO_CENTER = { lat: 37.4488, lng: 127.1677 }
@@ -43,7 +43,7 @@ export default function MapPage() {
   const [reports, setReports] = useState([])
   const [reportMode, setReportMode] = useState(false)
   const [pendingLocation, setPendingLocation] = useState(null)
-  const [selectedReport, setSelectedReport] = useState(null)
+  const [selectedReportGroup, setSelectedReportGroup] = useState(null) // 같은 좌표에 쌓인 제보 전체 (배열)
 
   useEffect(() => {
     routeApi
@@ -126,6 +126,18 @@ export default function MapPage() {
     [nodes, streetLights, start, end, handleNodeClick],
   )
 
+  // 제보가 몰린 곳을 은은하게 강조하는 히트맵 레이어. 겹칠수록 진해진다.
+  const reportHeatMarkers = useMemo(
+    () =>
+      reports.map((r) => ({
+        id: `heat-${r.id}`,
+        lat: r.latitude,
+        lng: r.longitude,
+        heat: true,
+      })),
+    [reports],
+  )
+
   // 주소 검색으로 정한 출발/도착은 그래프 노드가 아닐 수 있으므로, 그럴 때만 별도 핀으로 표시한다
   // 정보 카드를 보고 있는 장소도 큰 네이비 핀으로 표시한다
   const searchedPointMarkers = useMemo(() => {
@@ -160,22 +172,40 @@ export default function MapPage() {
     search.reset()
   }
 
+  // 같은 좌표(정확히 일치)에 등록된 제보는 마커가 완전히 겹쳐서 하나만 클릭되므로, 좌표 기준으로 묶어서
+  // 마커 하나당 그 위치의 제보 전체를 들고 있게 한다 ("+ 추가 제보"는 항상 원본과 동일한 좌표를 쓰므로 안전하게 묶임).
+  const reportGroups = useMemo(() => {
+    const groups = new Map()
+    reports.forEach((r) => {
+      const key = `${r.latitude},${r.longitude}`
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key).push(r)
+    })
+    return [...groups.values()]
+  }, [reports])
+
   const reportMarkers = useMemo(
     () =>
-      reports.map((r) => ({
-        id: `report-${r.id}`,
-        lat: r.latitude,
-        lng: r.longitude,
-        title: categoryLabel(r.category),
-        color: colors.red,
-        onClick: () => setSelectedReport(r),
-      })),
-    [reports],
+      reportGroups.map((group) => {
+        const latest = group[group.length - 1]
+        return {
+          id: `report-${latest.id}`,
+          lat: latest.latitude,
+          lng: latest.longitude,
+          title: group.length > 1 ? `${categoryLabel(latest.category)} 외 ${group.length - 1}건` : categoryLabel(latest.category),
+          color: colors.red,
+          size: 22,
+          icon: categoryIcon(latest.category),
+          badge: group.length > 1 ? group.length : undefined,
+          onClick: () => setSelectedReportGroup(group),
+        }
+      }),
+    [reportGroups],
   )
 
   const allMarkers = useMemo(
-    () => [...routeMarkers, ...reportMarkers, ...searchedPointMarkers],
-    [routeMarkers, reportMarkers, searchedPointMarkers],
+    () => [...reportHeatMarkers, ...routeMarkers, ...reportMarkers, ...searchedPointMarkers],
+    [reportHeatMarkers, routeMarkers, reportMarkers, searchedPointMarkers],
   )
 
   // 출발/도착 중 하나라도 초기화되면 이전 경로는 숨긴다
@@ -329,14 +359,18 @@ export default function MapPage() {
       />
 
       <ReportDetail
-        report={selectedReport}
-        onClose={() => setSelectedReport(null)}
-        onDeleted={() => {
-          setSelectedReport(null)
+        reports={selectedReportGroup}
+        onClose={() => setSelectedReportGroup(null)}
+        onDeleted={(deletedId) => {
+          setSelectedReportGroup((prev) => {
+            if (!prev) return prev
+            const remaining = prev.filter((r) => r.id !== deletedId)
+            return remaining.length > 0 ? remaining : null
+          })
           loadReports()
         }}
         onAddReport={(location) => {
-          setSelectedReport(null)
+          setSelectedReportGroup(null)
           setPendingLocation(location)
         }}
       />

@@ -22,8 +22,9 @@ function loadKakaoMapSdk() {
 
 /**
  * 메인 지도 컴포넌트.
- * - markers: [{ id, lat, lng, title?, color?, size?, subtle?, maxLevel?, onClick? }] 지도 위 점 표시 (color 미지정 시 네이비, size 미지정 시 14px).
+ * - markers: [{ id, lat, lng, title?, color?, size?, subtle?, maxLevel?, onClick?, heat? }] 지도 위 점 표시 (color 미지정 시 네이비, size 미지정 시 14px).
  *   subtle: 얇은 테두리+반투명+그림자 없음. maxLevel: 지도 줌 레벨(작을수록 확대)이 이 값 이하일 때만 표시.
+ *   heat: true면 클릭 불가한 큰 반투명 그라데이션 원(제보 밀집도 표시용)으로 그림. 겹칠수록 진해져 히트맵처럼 보인다.
  *   제보 마커는 color를 위험색(red)으로, 경로 노드는 선택 상태에 따른 색으로 넘기는 식으로 호출부에서 합쳐서 사용한다.
  * - paths: [{ id, points: [{ lat, lng }], color, weight? }] 경로 폴리라인 목록 (뒤쪽 항목이 위에 그려짐)
  * - onMapClick: 마커가 아닌 빈 지도 영역을 클릭했을 때 좌표 콜백 (제보 위치 선택용)
@@ -80,6 +81,21 @@ export default function KakaoMap({
       .map((m) => {
         const el = document.createElement('div')
         el.title = m.title ?? ''
+
+        if (m.heat) {
+          const size = m.size ?? 70
+          const heatColor = m.color ?? '229,72,77'
+          el.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;pointer-events:none;background:radial-gradient(circle, rgba(${heatColor},0.55) 0%, rgba(${heatColor},0) 70%);`
+          return new kakao.maps.CustomOverlay({
+            map: mapRef.current,
+            position: new kakao.maps.LatLng(m.lat, m.lng),
+            content: el,
+            yAnchor: 0.5,
+            xAnchor: 0.5,
+            zIndex: 1,
+          })
+        }
+
         const size = m.size ?? 14
         const border = m.subtle ? 1 : 2
         el.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;border:${border}px solid #fff;background:${
@@ -87,6 +103,23 @@ export default function KakaoMap({
         };opacity:${m.subtle ? 0.7 : 1};box-shadow:${
           m.subtle ? 'none' : '0 1px 4px rgba(0,0,0,.4)'
         };cursor:${m.onClick ? 'pointer' : 'default'}`
+        if (m.icon) {
+          el.style.display = 'flex'
+          el.style.alignItems = 'center'
+          el.style.justifyContent = 'center'
+          el.style.fontSize = `${Math.round(size * 0.65)}px`
+          el.style.lineHeight = '1'
+          el.textContent = m.icon
+        }
+        if (m.badge) {
+          el.style.position = 'relative'
+          const badge = document.createElement('span')
+          badge.textContent = m.badge > 9 ? '9+' : String(m.badge)
+          badge.style.cssText =
+            'position:absolute;top:-4px;right:-4px;min-width:14px;height:14px;padding:0 2px;border-radius:8px;' +
+            'background:#1A2B4C;color:#fff;font-size:10px;line-height:14px;text-align:center;box-shadow:0 0 2px rgba(0,0,0,.5)'
+          el.appendChild(badge)
+        }
         if (m.onClick) el.addEventListener('click', () => m.onClick(m))
         return new kakao.maps.CustomOverlay({
           map: mapRef.current,
@@ -94,6 +127,7 @@ export default function KakaoMap({
           content: el,
           yAnchor: 0.5,
           xAnchor: 0.5,
+          zIndex: 5,
         })
       })
     return () => overlays.forEach((o) => o.setMap(null))

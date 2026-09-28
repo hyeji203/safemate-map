@@ -31,8 +31,10 @@ public class Report {
     @Column(nullable = false)
     private double longitude;
 
+    // columnDefinition을 varchar로 명시해 MySQL 네이티브 enum 대신 문자열 컬럼으로 매핑한다.
+    // 네이티브 enum이면 카테고리 추가 시 DB에서 허용값 목록을 수동으로 ALTER해야 해서 (실제로 한 번 이 문제로 장애 발생) 문자열로 고정.
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "varchar(40)")
     private ReportCategory category;
 
     // 업로드된 사진의 상대 경로 (예: reports/uuid.jpg). 사진 없이 제보 가능하므로 nullable.

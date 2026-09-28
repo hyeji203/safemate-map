@@ -3,13 +3,12 @@ import { colors } from '../styles/colors'
 
 const TABS = [
   { to: '/', label: '지도', icon: '🏠', end: true },
-  { to: '/favorites', label: '즐겨찾기', icon: '⭐' },
   { to: '/notifications', label: '알림', icon: '🔔' },
   { to: '/my', label: '마이페이지', icon: '👤' },
 ]
 
-// 하단 4탭 네비게이션. 즐겨찾기/알림/마이페이지는 탭 구조만 먼저 잡고,
-// 실제 기능은 MVP(지도/경로탐색/제보/로그인) 완료 후 고도화 단계에서 구현한다.
+// 즐겨찾기는 독립 탭이 아니라 마이페이지 하위 기능으로 통합됨 (기획 문서 참고).
+// 알림 탭은 아직 placeholder.
 export default function BottomNav() {
   return (
     <nav
