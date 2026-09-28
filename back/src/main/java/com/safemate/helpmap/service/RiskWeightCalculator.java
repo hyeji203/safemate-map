@@ -14,6 +14,7 @@ import java.util.function.ToIntFunction;
 
 /**
  * 간선별 위험도를 계산한다. 가로등 밀도(어두움)와 시민 제보(위험)를 각각 0~1로 계산해 합산한다.
+ * 가로등 데이터에 차도 가로등이 없어서, 간선도로(tertiary 이상)는 어두움 0으로 본다.
  * 카테고리별 차등 가중치, 시간 경과에 따른 감쇄는 고도화 단계에서 추가할 예정이라 지금은 모든 제보를 같게 본다.
  */
 @Component
@@ -41,7 +42,10 @@ public class RiskWeightCalculator {
                     Report::getLatitude, Report::getLongitude, r -> 1);
 
             double lightsNeeded = Math.max(1, edge.getDistanceMeters() / METERS_PER_LIGHT);
-            double darkness = Math.max(0, 1.0 - lightCount / lightsNeeded);
+            // 간선도로는 데이터에 없는 차도 가로등이 있으므로 밝은 길로 본다 (RoadType.isLitArterial 참고)
+            double darkness = RoadType.isLitArterial(edge.getRoadType())
+                    ? 0
+                    : Math.max(0, 1.0 - lightCount / lightsNeeded);
             double reportRisk = Math.min(1.0, (double) reportCount / REPORTS_FOR_FULL_RISK);
             risks.put(edge.getId(), new EdgeRisk(darkness, reportRisk));
         }
