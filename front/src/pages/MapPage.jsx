@@ -277,25 +277,29 @@ export default function MapPage() {
                 fontWeight: 600,
               }}
             >
-              <RoutePoint
-                color={colors.navy}
-                name={start.title ?? '출발지'}
-                label="출발지"
-                editing={editingPoint === 'start'}
-                search={search}
-                onEdit={() => startEditingPoint('start')}
-                onCancel={cancelEditingPoint}
-              />
-              <span style={{ color: colors.gray, flexShrink: 0 }}>→</span>
-              <RoutePoint
-                color={colors.red}
-                name={end.title ?? '도착지'}
-                label="도착지"
-                editing={editingPoint === 'end'}
-                search={search}
-                onEdit={() => startEditingPoint('end')}
-                onCancel={cancelEditingPoint}
-              />
+              {/* 오른쪽 ✕와 같은 폭의 빈 칸. 출발지 칸과 도착지 칸이 같은 폭이 되게 한다 */}
+              <span style={{ width: 24, flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <RoutePoint
+                  color={colors.navy}
+                  name={start.title ?? '출발지'}
+                  label="출발지"
+                  editing={editingPoint === 'start'}
+                  search={search}
+                  onEdit={() => startEditingPoint('start')}
+                  onCancel={cancelEditingPoint}
+                />
+                <span style={{ color: colors.gray, flexShrink: 0 }}>→</span>
+                <RoutePoint
+                  color={colors.red}
+                  name={end.title ?? '도착지'}
+                  label="도착지"
+                  editing={editingPoint === 'end'}
+                  search={search}
+                  onEdit={() => startEditingPoint('end')}
+                  onCancel={cancelEditingPoint}
+                />
+              </div>
               {/* 변경 중에는 변경만 취소하고, 아닐 때는 경로 전체를 취소한다 */}
               <button
                 type="button"
@@ -407,13 +411,27 @@ export default function MapPage() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: 24,
+            padding: 0,
             boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
             cursor: 'pointer',
           }}
-          aria-label="위험구간 제보"
+          aria-label={reportMode ? '제보 취소' : '위험구간 제보'}
         >
-          {reportMode ? '✕' : '⚠️'}
+          {/* 이모지(⚠️)는 글꼴 아래 여백 때문에 원 안에서 아래로 처져 보여서 SVG로 그려 정가운데에 맞춘다 */}
+          {reportMode ? (
+            <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true" style={{ display: 'block' }}>
+              <path d="M5 5l12 12M17 5L5 17" stroke={colors.white} strokeWidth="2.5" strokeLinecap="round" />
+            </svg>
+          ) : (
+            <svg width="28" height="26" viewBox="0 0 28 26" aria-hidden="true" style={{ display: 'block' }}>
+              <path
+                d="M12.27 2a2 2 0 0 1 3.46 0l11 19a2 2 0 0 1-1.73 3H3a2 2 0 0 1-1.73-3z"
+                fill={colors.amber}
+              />
+              <rect x="12.6" y="8.5" width="2.8" height="8.5" rx="1.4" fill={colors.navy} />
+              <circle cx="14" cy="20.3" r="1.6" fill={colors.navy} />
+            </svg>
+          )}
         </button>
       )}
 
@@ -507,7 +525,8 @@ const routePointStyle = {
   display: 'flex',
   alignItems: 'center',
   gap: 6,
-  flex: 1,
+  flex: 1, // 출발지·도착지가 바를 반씩 나눠 갖고, 각 칸 안에서 이름을 가운데 정렬한다
+  justifyContent: 'center',
   minWidth: 0,
   padding: 0,
   border: 'none',
@@ -518,21 +537,21 @@ const routePointStyle = {
   cursor: 'pointer',
 }
 
-// 경로 한 개의 요약 카드. 테두리 색(color)은 지도 위 경로선 색과 같다
+// 경로 한 개의 요약 카드. 테두리와 제목 글자 색(color)은 지도 위 경로선 색과 같다
 function RouteCard({ label, color, route }) {
   return (
     <div
       style={{
         flex: 1,
         minWidth: 0,
-        border: `2px solid ${color}`,
+        border: `3px solid ${color}`,
         borderRadius: 10,
         padding: '10px 12px',
         background: colors.white,
         boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
       }}
     >
-      <div style={{ fontSize: 14, fontWeight: 700 }}>{label}</div>
+      <div style={{ fontSize: 14, fontWeight: 700, color }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 800, marginTop: 2 }}>
         {route.estimatedMinutes}
         <span style={{ fontSize: 14, fontWeight: 600 }}>분</span>
