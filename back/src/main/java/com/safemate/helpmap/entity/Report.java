@@ -41,6 +41,10 @@ public class Report {
     @Column
     private String imagePath;
 
+    // 등록 시점에 좌표를 카카오 API로 변환해 저장한 사람이 읽을 수 있는 주소. 변환 실패 시 nullable.
+    @Column
+    private String address;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -49,11 +53,12 @@ public class Report {
         this.createdAt = LocalDateTime.now();
     }
 
-    public Report(Member reporter, double latitude, double longitude, ReportCategory category, String imagePath) {
+    public Report(Member reporter, double latitude, double longitude, ReportCategory category, String imagePath, String address) {
         this.reporter = reporter;
         this.latitude = latitude;
         this.longitude = longitude;
         this.category = category;
         this.imagePath = imagePath;
+        this.address = address;
     }
 }

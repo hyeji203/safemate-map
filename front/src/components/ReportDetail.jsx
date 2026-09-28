@@ -62,7 +62,7 @@ export default function ReportDetail({ reports, onClose, onDeleted, onAddReport 
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
           <h2 style={{ margin: 0, color: colors.navy, flex: 1 }}>
             이 위치의 제보 {reports.length > 1 ? `(${reports.length}건)` : ''}
           </h2>
@@ -85,6 +85,9 @@ export default function ReportDetail({ reports, onClose, onDeleted, onAddReport 
             + 추가 제보
           </button>
         </div>
+        <p style={{ margin: '0 0 12px', fontSize: 13, color: colors.gray }}>
+          📍 {reports[0].address ?? `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`}
+        </p>
 
         {error && <p style={{ color: colors.red, fontSize: 13, margin: '0 0 12px' }}>{error}</p>}
 
