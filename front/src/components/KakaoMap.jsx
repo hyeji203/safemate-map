@@ -29,6 +29,7 @@ function loadKakaoMapSdk() {
  * - paths: [{ id, points: [{ lat, lng }], color, weight? }] 경로 폴리라인 목록 (뒤쪽 항목이 위에 그려짐)
  * - onMapClick: 마커가 아닌 빈 지도 영역을 클릭했을 때 좌표 콜백 (제보 위치 선택용)
  * - focus: { lat, lng, level? } 이 값이 바뀔 때마다 지도를 그 위치로 이동한다 (검색한 장소 보여주기용)
+ * - myLocation: { lat, lng } | null. 있으면 파란 핀 모양으로 현재 위치를 표시 (null이면 표시 안 함)
  * center/level은 최초 렌더링에만 적용된다.
  */
 export default function KakaoMap({
@@ -38,6 +39,7 @@ export default function KakaoMap({
   paths = [],
   onMapClick,
   focus,
+  myLocation,
 }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
@@ -145,6 +147,27 @@ export default function KakaoMap({
     if (focus.level != null) map.setLevel(focus.level)
     map.panTo(new window.kakao.maps.LatLng(focus.lat, focus.lng))
   }, [mapReady, focus])
+
+  // 현재 위치: 파란 점 + 주변 블러(halo)로 표시. myLocation이 null이면 안 그림(=아직 위치 못 잡음)
+  useEffect(() => {
+    if (!mapReady || !myLocation) return
+    const { kakao } = window
+    const el = document.createElement('div')
+    el.title = '현재 위치'
+    el.style.cssText = 'position:relative;width:56px;height:56px;display:flex;align-items:center;justify-content:center;'
+    el.innerHTML =
+      '<div style="position:absolute;width:56px;height:56px;border-radius:50%;background:radial-gradient(circle, rgba(47,111,238,0.8) 0%, rgba(47,111,238,0.45) 45%, rgba(47,111,238,0) 72%);"></div>' +
+      '<div style="position:relative;width:16px;height:16px;border-radius:50%;background:#2F6FEE;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);"></div>'
+    const overlay = new kakao.maps.CustomOverlay({
+      map: mapRef.current,
+      position: new kakao.maps.LatLng(myLocation.lat, myLocation.lng),
+      content: el,
+      yAnchor: 0.5,
+      xAnchor: 0.5,
+      zIndex: 6,
+    })
+    return () => overlay.setMap(null)
+  }, [mapReady, myLocation])
 
   // 지도 빈 공간 클릭 시 좌표 전달 (마커 클릭은 각 마커 자체의 onClick이 처리하므로 서로 안 겹침)
   useEffect(() => {

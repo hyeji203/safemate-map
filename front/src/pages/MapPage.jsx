@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { routeApi } from '../api/routeApi'
 import KakaoMap from '../components/KakaoMap'
 import PlaceSearchBar from '../components/PlaceSearchBar'
@@ -40,6 +40,34 @@ export default function MapPage() {
   const [reportMode, setReportMode] = useState(false)
   const [pendingLocation, setPendingLocation] = useState(null)
   const [selectedReportGroup, setSelectedReportGroup] = useState(null) // 같은 좌표에 쌓인 제보 전체 (배열)
+
+  // 현재 위치는 화면 진입 시부터 계속 추적해서 항상 파란 점으로 표시한다.
+  // 🧭 버튼은 위치 추적을 켜고 끄는 게 아니라, 지금 위치로 지도를 한 번 이동시키는 용도.
+  const [myLocation, setMyLocation] = useState(null)
+  const [locationFocus, setLocationFocus] = useState(null) // 버튼 누르면 갱신 -> 지도 이동
+  const watchIdRef = useRef(null)
+
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setError('이 브라우저에서는 현재 위치를 지원하지 않습니다.')
+      return
+    }
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => setMyLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => setError('현재 위치를 가져오지 못했습니다. 위치 권한을 확인해주세요.'),
+      { enableHighAccuracy: true },
+    )
+    return () => {
+      if (watchIdRef.current != null) {
+        navigator.geolocation.clearWatch(watchIdRef.current)
+        watchIdRef.current = null
+      }
+    }
+  }, [])
+
+  const handleLocateMe = () => {
+    if (myLocation) setLocationFocus({ ...myLocation, level: 4 })
+  }
 
   useEffect(() => {
     routeApi
@@ -112,9 +140,10 @@ export default function MapPage() {
   }, [start, end, selectedPlace])
 
   // 장소를 고르면 지도를 그 위치로 확대 이동한다 (레벨 3: 골목 단위까지 보이는 정도)
+  // 장소 검색이 우선이고, 없으면 현재 위치를 처음 잡았을 때 한 번 이동한다
   const focus = useMemo(
-    () => (selectedPlace ? { lat: selectedPlace.lat, lng: selectedPlace.lng, level: 3 } : null),
-    [selectedPlace],
+    () => (selectedPlace ? { lat: selectedPlace.lat, lng: selectedPlace.lng, level: 3 } : locationFocus),
+    [selectedPlace, locationFocus],
   )
 
   const setPlaceAs = (setter, id) => {
@@ -195,6 +224,7 @@ export default function MapPage() {
         paths={paths}
         onMapClick={reportMode ? handleMapClick : undefined}
         focus={focus}
+        myLocation={myLocation}
       />
 
 
@@ -270,14 +300,52 @@ export default function MapPage() {
       {!selectedPlace && (
         <button
           type="button"
+          onClick={handleLocateMe}
+          disabled={!myLocation}
+          style={{
+            position: 'absolute',
+            zIndex: 10,
+            bottom: 84,
+            right: 16,
+            width: 52,
+            height: 52,
+            borderRadius: '50%',
+            border: 'none',
+            background: colors.navy,
+            color: colors.white,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 20,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+            cursor: myLocation ? 'pointer' : 'default',
+            opacity: myLocation ? 1 : 0.5,
+          }}
+          aria-label="현재 위치로 이동"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="3" fill="currentColor" />
+            <circle cx="12" cy="12" r="7" stroke="currentColor" strokeWidth="2" />
+            <line x1="12" y1="1" x2="12" y2="4" stroke="currentColor" strokeWidth="2" />
+            <line x1="12" y1="20" x2="12" y2="23" stroke="currentColor" strokeWidth="2" />
+            <line x1="1" y1="12" x2="4" y2="12" stroke="currentColor" strokeWidth="2" />
+            <line x1="20" y1="12" x2="23" y2="12" stroke="currentColor" strokeWidth="2" />
+          </svg>
+        </button>
+      )}
+
+      {/* 장소 정보 카드가 떠 있을 때는 카드에 자리를 내준다 */}
+      {!selectedPlace && (
+        <button
+          type="button"
           onClick={() => setReportMode((v) => !v)}
           style={{
             position: 'absolute',
             zIndex: 10, // 카카오맵 내부 레이어보다 위에 표시
             bottom: 16,
             right: 16,
-            width: 56,
-            height: 56,
+            width: 52,
+            height: 52,
             borderRadius: '50%',
             border: 'none',
             background: reportMode ? colors.red : colors.navy,
