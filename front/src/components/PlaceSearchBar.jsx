@@ -5,8 +5,7 @@ import { colors } from '../styles/colors'
  * - search: usePlaceSearch() 반환값
  */
 export default function PlaceSearchBar({ search }) {
-  const { query, results, selected, loading, error, onQueryChange, onSelect, reset } = search
-  const showDropdown = !selected && (results.length > 0 || loading || error)
+  const { query, selected, onQueryChange, onSelect, reset } = search
 
   return (
     <div style={{ position: 'relative', flex: 1 }}>
@@ -46,43 +45,56 @@ export default function PlaceSearchBar({ search }) {
         )}
       </div>
 
-      {showDropdown && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            right: 0,
-            marginTop: 6,
-            background: colors.white,
-            borderRadius: 12,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-            maxHeight: 320,
-            overflowY: 'auto',
-          }}
-        >
-          {loading && <div style={messageStyle}>검색 중...</div>}
-          {!loading && error && <div style={{ ...messageStyle, color: colors.red }}>{error}</div>}
-          {!loading &&
-            !error &&
-            results.map((place, i) => (
-              <button
-                key={`${place.placeName}-${place.latitude}-${place.longitude}-${i}`}
-                type="button"
-                onClick={() => onSelect(place)}
-                style={resultItemStyle}
-              >
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                  <span style={{ fontWeight: 700, color: colors.navy }}>{place.placeName}</span>
-                  {place.categoryName && (
-                    <span style={{ fontSize: 12, color: colors.gray }}>{place.categoryName}</span>
-                  )}
-                </div>
-                <div style={{ fontSize: 12, color: colors.gray, marginTop: 2 }}>{place.addressName}</div>
-              </button>
-            ))}
-        </div>
-      )}
+      <PlaceResults search={search} onSelect={onSelect} />
+    </div>
+  )
+}
+
+/**
+ * 검색창 아래로 펼쳐지는 검색 결과 목록. 부모 요소(position: relative) 바로 아래에 붙는다.
+ * 출발/도착 변경 입력칸에서도 같이 쓴다.
+ * - search: usePlaceSearch() 반환값
+ * - onSelect: 결과 하나를 골랐을 때 부를 함수
+ */
+export function PlaceResults({ search, onSelect }) {
+  const { results, selected, loading, error } = search
+  if (selected || !(results.length > 0 || loading || error)) return null
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: '100%',
+        left: 0,
+        right: 0,
+        marginTop: 6,
+        background: colors.white,
+        borderRadius: 12,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+        maxHeight: 320,
+        overflowY: 'auto',
+      }}
+    >
+      {loading && <div style={messageStyle}>검색 중...</div>}
+      {!loading && error && <div style={{ ...messageStyle, color: colors.red }}>{error}</div>}
+      {!loading &&
+        !error &&
+        results.map((place, i) => (
+          <button
+            key={`${place.placeName}-${place.latitude}-${place.longitude}-${i}`}
+            type="button"
+            onClick={() => onSelect(place)}
+            style={resultItemStyle}
+          >
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+              <span style={{ fontWeight: 700, color: colors.navy }}>{place.placeName}</span>
+              {place.categoryName && (
+                <span style={{ fontSize: 12, color: colors.gray }}>{place.categoryName}</span>
+              )}
+            </div>
+            <div style={{ fontSize: 12, color: colors.gray, marginTop: 2 }}>{place.addressName}</div>
+          </button>
+        ))}
     </div>
   )
 }
