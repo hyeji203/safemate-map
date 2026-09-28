@@ -40,7 +40,9 @@ export function usePlaceSearch() {
     }, SEARCH_DEBOUNCE_MS)
   }
 
-  const onSelect = (place) => {
+  // fromMap: 검색이 아니라 지도를 눌러서 고른 장소인지 (이때는 지도를 따로 이동시키지 않는다)
+  const onSelect = (place, { fromMap = false } = {}) => {
+    clearTimeout(timerRef.current)
     setSelected({
       lat: place.latitude,
       lng: place.longitude,
@@ -50,9 +52,12 @@ export function usePlaceSearch() {
       phone: place.phone,
       placeUrl: place.placeUrl,
       distanceMeters: place.distanceMeters,
+      fromMap,
     })
     setQuery(place.placeName)
     setResults([])
+    setLoading(false)
+    setError(null)
   }
 
   const reset = () => {
