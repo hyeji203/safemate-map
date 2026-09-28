@@ -111,6 +111,15 @@ export default function KakaoMap({
           el.style.lineHeight = '1'
           el.textContent = m.icon
         }
+        if (m.badge) {
+          el.style.position = 'relative'
+          const badge = document.createElement('span')
+          badge.textContent = m.badge > 9 ? '9+' : String(m.badge)
+          badge.style.cssText =
+            'position:absolute;top:-4px;right:-4px;min-width:14px;height:14px;padding:0 2px;border-radius:8px;' +
+            'background:#1A2B4C;color:#fff;font-size:10px;line-height:14px;text-align:center;box-shadow:0 0 2px rgba(0,0,0,.5)'
+          el.appendChild(badge)
+        }
         if (m.onClick) el.addEventListener('click', () => m.onClick(m))
         return new kakao.maps.CustomOverlay({
           map: mapRef.current,

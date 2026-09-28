@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { colors } from '../styles/colors'
 import { reportApi } from '../api/reportApi'
 import { REPORT_CATEGORIES as CATEGORIES } from '../constants/reportCategories'
@@ -6,6 +6,8 @@ import { REPORT_CATEGORIES as CATEGORIES } from '../constants/reportCategories'
 /**
  * 지도 클릭으로 좌표를 받은 뒤 뜨는 제보 등록 모달.
  * location: { lat, lng } — 필수. 이게 없으면 모달을 열지 않는다.
+ * 모달은 항상 마운트된 채로 열고 닫히므로(닫힐 때 unmount 안 됨), location이 바뀔 때마다
+ * (=새로 열릴 때마다) 폼을 초기화한다 — 안 그러면 이전에 고른 사진/카테고리가 다음 제보에 그대로 남는다.
  */
 export default function ReportModal({ location, onClose, onSubmitted }) {
   const [category, setCategory] = useState(CATEGORIES[0].value)
@@ -13,6 +15,16 @@ export default function ReportModal({ location, onClose, onSubmitted }) {
   const [preview, setPreview] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
+
+  useEffect(() => {
+    if (!location) return
+    setCategory(CATEGORIES[0].value)
+    setImage(null)
+    setPreview(null)
+    setError(null)
+    // location은 열 때마다 새 객체라서 이 effect가 매번 실행됨
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location])
 
   if (!location) return null
 
