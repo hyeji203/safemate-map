@@ -46,10 +46,10 @@ export default function MapPage() {
   const [pendingLocation, setPendingLocation] = useState(null)
   const [selectedReportGroup, setSelectedReportGroup] = useState(null) // 같은 좌표에 쌓인 제보 전체 (배열)
 
-  // 현재 위치는 화면 진입 시부터 계속 추적해서 항상 파란 점으로 표시한다.
-  // 🧭 버튼은 위치 추적을 켜고 끄는 게 아니라, 지금 위치로 지도를 한 번 이동시키는 용도.
+  // 현재 위치는 화면 진입 시부터 계속 추적해서 항상 파란 점 + 바라보는 방향으로 표시한다.
+  // (안드로이드 전용이라 iOS의 별도 방향 센서 권한 처리는 필요 없음)
   const [myLocation, setMyLocation] = useState(null)
-  const [locationFocus, setLocationFocus] = useState(null) // 버튼 누르면 갱신 -> 지도 이동
+  const [locationFocus, setLocationFocus] = useState(null) // "현재 위치로 이동" 버튼 누르면 갱신 -> 지도 이동
   const watchIdRef = useRef(null)
 
   useEffect(() => {
@@ -71,8 +71,30 @@ export default function MapPage() {
   }, [])
 
   const handleLocateMe = () => {
-    if (myLocation) setLocationFocus({ ...myLocation, level: 4 })
+    // level을 안 주면 KakaoMap의 focus 이펙트가 확대/축소는 안 바꾸고 이동만 한다 (지금 보던 배율 유지)
+    if (myLocation) setLocationFocus({ lat: myLocation.lat, lng: myLocation.lng })
   }
+
+  // 기기가 바라보는 방향(정북 기준 시계방향 도). 센서가 없으면 계속 null.
+  const [heading, setHeading] = useState(null)
+
+  useEffect(() => {
+    const handleOrientation = (e) => {
+      if (typeof e.webkitCompassHeading === 'number') {
+        // iOS Safari: 이미 정북 기준 시계방향 각도로 줌
+        setHeading(e.webkitCompassHeading)
+      } else if (e.absolute && e.alpha != null) {
+        // Android 등: alpha는 반시계 방향 기준이라 보정
+        setHeading((360 - e.alpha) % 360)
+      }
+    }
+    window.addEventListener('deviceorientationabsolute', handleOrientation, true)
+    window.addEventListener('deviceorientation', handleOrientation, true)
+    return () => {
+      window.removeEventListener('deviceorientationabsolute', handleOrientation, true)
+      window.removeEventListener('deviceorientation', handleOrientation, true)
+    }
+  }, [])
 
   useEffect(() => {
     routeApi
@@ -147,7 +169,7 @@ export default function MapPage() {
 
   // 검색으로 장소를 고르면 지도를 그 위치로 확대 이동한다 (레벨 3: 골목 단위까지 보이는 정도)
   // 지도를 눌러서 고른 장소는 이미 보고 있는 곳이라 이동하지 않고, 그것도 아니면
-  // 현재 위치 버튼을 눌렀을 때(locationFocus)만 이동한다
+  // "현재 위치로 이동" 버튼을 눌렀을 때(locationFocus)만 이동한다
   const focus = useMemo(
     () =>
       selectedPlace && !selectedPlace.fromMap
@@ -277,6 +299,7 @@ export default function MapPage() {
         crosshair={reportMode}
         focus={focus}
         myLocation={myLocation}
+        heading={heading}
       />
 
 
@@ -478,12 +501,13 @@ export default function MapPage() {
             alignItems: 'center',
             justifyContent: 'center',
             fontSize: 24,
+            lineHeight: 1,
             boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
             cursor: 'pointer',
           }}
           aria-label="위험구간 제보"
         >
-          {reportMode ? '✕' : '⚠️'}
+          <span style={{ transform: 'translateY(-2px)' }}>{reportMode ? '✕' : '⚠️'}</span>
         </button>
       )}
 
