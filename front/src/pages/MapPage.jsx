@@ -46,6 +46,56 @@ export default function MapPage() {
   const [pendingLocation, setPendingLocation] = useState(null)
   const [selectedReportGroup, setSelectedReportGroup] = useState(null) // 같은 좌표에 쌓인 제보 전체 (배열)
 
+  // 현재 위치는 화면 진입 시부터 계속 추적해서 항상 파란 점 + 바라보는 방향으로 표시한다.
+  // (안드로이드 전용이라 iOS의 별도 방향 센서 권한 처리는 필요 없음)
+  const [myLocation, setMyLocation] = useState(null)
+  const [locationFocus, setLocationFocus] = useState(null) // "현재 위치로 이동" 버튼 누르면 갱신 -> 지도 이동
+  const watchIdRef = useRef(null)
+
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setError('이 브라우저에서는 현재 위치를 지원하지 않습니다.')
+      return
+    }
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => setMyLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => setError('현재 위치를 가져오지 못했습니다. 위치 권한을 확인해주세요.'),
+      { enableHighAccuracy: true },
+    )
+    return () => {
+      if (watchIdRef.current != null) {
+        navigator.geolocation.clearWatch(watchIdRef.current)
+        watchIdRef.current = null
+      }
+    }
+  }, [])
+
+  const handleLocateMe = () => {
+    // level을 안 주면 KakaoMap의 focus 이펙트가 확대/축소는 안 바꾸고 이동만 한다 (지금 보던 배율 유지)
+    if (myLocation) setLocationFocus({ lat: myLocation.lat, lng: myLocation.lng })
+  }
+
+  // 기기가 바라보는 방향(정북 기준 시계방향 도). 센서가 없으면 계속 null.
+  const [heading, setHeading] = useState(null)
+
+  useEffect(() => {
+    const handleOrientation = (e) => {
+      if (typeof e.webkitCompassHeading === 'number') {
+        // iOS Safari: 이미 정북 기준 시계방향 각도로 줌
+        setHeading(e.webkitCompassHeading)
+      } else if (e.absolute && e.alpha != null) {
+        // Android 등: alpha는 반시계 방향 기준이라 보정
+        setHeading((360 - e.alpha) % 360)
+      }
+    }
+    window.addEventListener('deviceorientationabsolute', handleOrientation, true)
+    window.addEventListener('deviceorientation', handleOrientation, true)
+    return () => {
+      window.removeEventListener('deviceorientationabsolute', handleOrientation, true)
+      window.removeEventListener('deviceorientation', handleOrientation, true)
+    }
+  }, [])
+
   useEffect(() => {
     routeApi
       .findStreetLights()
@@ -118,11 +168,14 @@ export default function MapPage() {
   }, [start, end, selectedPlace])
 
   // 검색으로 장소를 고르면 지도를 그 위치로 확대 이동한다 (레벨 3: 골목 단위까지 보이는 정도)
-  // 지도를 눌러서 고른 장소는 이미 보고 있는 곳이라 이동하지 않는다
+  // 지도를 눌러서 고른 장소는 이미 보고 있는 곳이라 이동하지 않고, 그것도 아니면
+  // "현재 위치로 이동" 버튼을 눌렀을 때(locationFocus)만 이동한다
   const focus = useMemo(
     () =>
-      selectedPlace && !selectedPlace.fromMap ? { lat: selectedPlace.lat, lng: selectedPlace.lng, level: 3 } : null,
-    [selectedPlace],
+      selectedPlace && !selectedPlace.fromMap
+        ? { lat: selectedPlace.lat, lng: selectedPlace.lng, level: 3 }
+        : locationFocus,
+    [selectedPlace, locationFocus],
   )
 
   const setPlaceAs = (setter, id) => {
@@ -245,6 +298,8 @@ export default function MapPage() {
         onMapClick={handleMapClick}
         crosshair={reportMode}
         focus={focus}
+        myLocation={myLocation}
+        heading={heading}
       />
 
 
@@ -396,14 +451,52 @@ export default function MapPage() {
       {!selectedPlace && (
         <button
           type="button"
+          onClick={handleLocateMe}
+          disabled={!myLocation}
+          style={{
+            position: 'absolute',
+            zIndex: 10,
+            bottom: 84,
+            right: 16,
+            width: 52,
+            height: 52,
+            borderRadius: '50%',
+            border: 'none',
+            background: colors.navy,
+            color: colors.white,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 20,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+            cursor: myLocation ? 'pointer' : 'default',
+            opacity: myLocation ? 1 : 0.5,
+          }}
+          aria-label="현재 위치로 이동"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="3" fill="currentColor" />
+            <circle cx="12" cy="12" r="7" stroke="currentColor" strokeWidth="2" />
+            <line x1="12" y1="1" x2="12" y2="4" stroke="currentColor" strokeWidth="2" />
+            <line x1="12" y1="20" x2="12" y2="23" stroke="currentColor" strokeWidth="2" />
+            <line x1="1" y1="12" x2="4" y2="12" stroke="currentColor" strokeWidth="2" />
+            <line x1="20" y1="12" x2="23" y2="12" stroke="currentColor" strokeWidth="2" />
+          </svg>
+        </button>
+      )}
+
+      {/* 장소 정보 카드가 떠 있을 때는 카드에 자리를 내준다 */}
+      {!selectedPlace && (
+        <button
+          type="button"
           onClick={() => setReportMode((v) => !v)}
           style={{
             position: 'absolute',
             zIndex: 10, // 카카오맵 내부 레이어보다 위에 표시
             bottom: 16,
             right: 16,
-            width: 56,
-            height: 56,
+            width: 52,
+            height: 52,
             borderRadius: '50%',
             border: 'none',
             background: reportMode ? colors.red : colors.navy,
