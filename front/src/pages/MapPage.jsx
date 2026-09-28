@@ -88,18 +88,6 @@ export default function MapPage() {
     [streetLights],
   )
 
-  // 제보가 몰린 곳을 은은하게 강조하는 히트맵 레이어. 겹칠수록 진해진다.
-  const reportHeatMarkers = useMemo(
-    () =>
-      reports.map((r) => ({
-        id: `heat-${r.id}`,
-        lat: r.latitude,
-        lng: r.longitude,
-        heat: true,
-      })),
-    [reports],
-  )
-
   // 검색으로 정한 출발/도착은 별도 핀으로 표시한다
   // 정보 카드를 보고 있는 장소도 큰 네이비 핀으로 표시한다
   const searchedPointMarkers = useMemo(() => {
@@ -166,8 +154,8 @@ export default function MapPage() {
   )
 
   const allMarkers = useMemo(
-    () => [...reportHeatMarkers, ...streetLightMarkers, ...reportMarkers, ...searchedPointMarkers],
-    [reportHeatMarkers, streetLightMarkers, reportMarkers, searchedPointMarkers],
+    () => [...streetLightMarkers, ...reportMarkers, ...searchedPointMarkers],
+    [streetLightMarkers, reportMarkers, searchedPointMarkers],
   )
 
   // 출발/도착 중 하나라도 초기화되면 이전 경로는 숨긴다
