@@ -192,6 +192,30 @@ public class KakaoLocalService {
         return parts[parts.length - 1].trim();
     }
 
+    /**
+     * 좌표를 주소로 변환한다 (제보 등록 시 위치를 사람이 읽을 수 있는 주소로 저장하는 용도).
+     * 도로명 주소가 있으면 그걸 우선 쓰고, 없으면 지번 주소를 쓴다. 변환 실패 시 null.
+     */
+    public String coordToAddress(double latitude, double longitude) {
+        CoordToAddressResponse response = restClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/v2/local/geo/coord2address.json")
+                        .queryParam("x", longitude)
+                        .queryParam("y", latitude)
+                        .build())
+                .retrieve()
+                .body(CoordToAddressResponse.class);
+
+        if (response == null || response.documents() == null || response.documents().isEmpty()) {
+            return null;
+        }
+        var doc = response.documents().get(0);
+        if (doc.roadAddress() != null && doc.roadAddress().addressName() != null && !doc.roadAddress().addressName().isBlank()) {
+            return doc.roadAddress().addressName();
+        }
+        return doc.address() != null ? doc.address().addressName() : null;
+    }
+
     /** 카카오 키워드 검색 API 응답 중 필요한 필드만 옮겨 담는 파싱용 DTO. */
     record KeywordSearchResponse(List<Document> documents) {
         record Document(
@@ -208,7 +232,7 @@ public class KakaoLocalService {
         }
     }
 
-    /** 카카오 좌표→주소 변환 API 응답 중 필요한 필드만 옮겨 담는 파싱용 DTO. */
+    /** 카카오 좌표→주소 변환 API 응답 중 필요한 필드만 옮겨 담는 파싱용 DTO (지도 클릭 장소 조회, 제보 주소 저장에 같이 사용). */
     record CoordToAddressResponse(List<Document> documents) {
         record Document(
                 @JsonProperty("road_address") RoadAddress roadAddress,

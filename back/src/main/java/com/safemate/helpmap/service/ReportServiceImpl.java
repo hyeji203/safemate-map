@@ -30,6 +30,7 @@ public class ReportServiceImpl implements ReportService {
 
     private final ReportRepository reportRepository;
     private final AnonymousMemberService anonymousMemberService;
+    private final KakaoLocalService kakaoLocalService;
 
     @Value("${app.upload-dir}")
     private String uploadDir;
@@ -39,8 +40,9 @@ public class ReportServiceImpl implements ReportService {
     public ReportResponse create(ReportCreateRequest request, MultipartFile image) {
         Member reporter = anonymousMemberService.findOrCreate(request.deviceId());
         String imagePath = image == null || image.isEmpty() ? null : storeImage(image);
+        String address = resolveAddress(request.latitude(), request.longitude());
 
-        Report report = new Report(reporter, request.latitude(), request.longitude(), request.category(), imagePath);
+        Report report = new Report(reporter, request.latitude(), request.longitude(), request.category(), imagePath, address);
         Report saved = reportRepository.save(report);
 
         // TODO(고도화 1단계): 여기서 SimpMessagingTemplate으로 /topic/reports 브로드캐스트
@@ -78,6 +80,16 @@ public class ReportServiceImpl implements ReportService {
             deleteImageFile(report.getImagePath());
         }
         reportRepository.delete(report);
+    }
+
+    // 주소 변환은 부가 정보라, 카카오 API 호출이 실패해도 제보 등록 자체는 막지 않고 주소만 비워둔다.
+    private String resolveAddress(double latitude, double longitude) {
+        try {
+            return kakaoLocalService.coordToAddress(latitude, longitude);
+        } catch (Exception e) {
+            log.warn("좌표->주소 변환 실패: lat={}, lng={}", latitude, longitude, e);
+            return null;
+        }
     }
 
     private void deleteImageFile(String relativePath) {

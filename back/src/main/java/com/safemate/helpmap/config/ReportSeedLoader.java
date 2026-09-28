@@ -5,6 +5,7 @@ import com.safemate.helpmap.entity.Report;
 import com.safemate.helpmap.entity.type.ReportCategory;
 import com.safemate.helpmap.repository.ReportRepository;
 import com.safemate.helpmap.service.AnonymousMemberService;
+import com.safemate.helpmap.service.KakaoLocalService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
@@ -40,6 +41,7 @@ public class ReportSeedLoader implements CommandLineRunner {
 
     private final ReportRepository reportRepository;
     private final AnonymousMemberService anonymousMemberService;
+    private final KakaoLocalService kakaoLocalService;
 
     @Override
     public void run(String... args) {
@@ -48,8 +50,15 @@ public class ReportSeedLoader implements CommandLineRunner {
         }
 
         Member seedMember = anonymousMemberService.findOrCreate(SEED_DEVICE_ID);
-        SEEDS.forEach(seed -> reportRepository.save(
-                new Report(seedMember, seed.latitude(), seed.longitude(), seed.category(), null)));
+        SEEDS.forEach(seed -> {
+            String address = null;
+            try {
+                address = kakaoLocalService.coordToAddress(seed.latitude(), seed.longitude());
+            } catch (Exception e) {
+                log.warn("더미 제보 주소 변환 실패: {}", seed, e);
+            }
+            reportRepository.save(new Report(seedMember, seed.latitude(), seed.longitude(), seed.category(), null, address));
+        });
 
         log.info("발표용 더미 제보 적재: {}개", SEEDS.size());
     }
