@@ -170,14 +170,31 @@ export default function MapPage() {
   const visibleRoutes = start && end ? routes : null
 
   // 최단경로(회색, 굵게)를 아래에, 안심경로(노랑, 가늘게)를 위에 그려 겹쳐도 둘 다 보이게 한다
+  // 큰 도로를 건너는 곳은 맨 위에 횡단보도 모양(네이비 바탕 + 흰 줄무늬)으로 그린다
   const paths = useMemo(() => {
     if (!visibleRoutes) return []
     // geometry = 실제 도로 모양(굽은 길 포함), 없으면 교차로만 직선으로 잇는다
     const toPoints = (route) =>
       (route.geometry?.length ? route.geometry : route.path).map((p) => ({ lat: p.latitude, lng: p.longitude }))
+    const toLatLng = (p) => ({ lat: p.latitude, lng: p.longitude })
+    // 두 경로가 같은 곳에서 건너면 한 번만 그린다
+    const crossings = new Map()
+    for (const route of [visibleRoutes.shortest, visibleRoutes.safe]) {
+      for (const c of route.crossings ?? []) {
+        crossings.set(`${c.start.latitude},${c.start.longitude},${c.end.latitude},${c.end.longitude}`, c)
+      }
+    }
+    const crossingPaths = [...crossings.entries()].flatMap(([key, c]) => {
+      const points = [toLatLng(c.start), toLatLng(c.end)]
+      return [
+        { id: `crossing-base-${key}`, points, color: colors.navy, weight: 14 },
+        { id: `crossing-stripe-${key}`, points, color: colors.white, weight: 10, style: 'shortdash' },
+      ]
+    })
     return [
       { id: 'shortest', points: toPoints(visibleRoutes.shortest), color: colors.gray, weight: 10 },
       { id: 'safe', points: toPoints(visibleRoutes.safe), color: colors.amber, weight: 5 },
+      ...crossingPaths,
     ]
   }, [visibleRoutes])
 
@@ -539,6 +556,9 @@ const routePointStyle = {
 
 // 경로 한 개의 요약 카드. 테두리와 제목 글자 색(color)은 지도 위 경로선 색과 같다
 function RouteCard({ label, color, route }) {
+  const crossings = route.crossings ?? []
+  // 공공데이터(횡단보도 표준데이터)로 보행자 신호등이 확인된 곳만 센다
+  const signalCount = crossings.filter((c) => c.hasSignal).length
   return (
     <div
       style={{
@@ -561,6 +581,9 @@ function RouteCard({ label, color, route }) {
         어두운 구간 {Math.round(route.darkDistanceMeters)}m
       </div>
       <div style={{ fontSize: 12, color: colors.gray }}>제보 구간 {Math.round(route.reportedDistanceMeters)}m</div>
+      <div style={{ fontSize: 12, color: colors.gray }}>
+        횡단보도 {crossings.length}회{signalCount > 0 && ` · 신호등 ${signalCount}곳`}
+      </div>
     </div>
   )
 }

@@ -27,7 +27,8 @@ function loadKakaoMapSdk() {
  *   badge: 오른쪽 위에 작은 숫자 표시 (같은 위치에 여러 건 묶였을 때 개수 표시용).
  *   pin: true면 물방울 모양 핀으로 그림 (선택한 장소 표시용). label을 주면 핀 아래에 이름표를 붙인다.
  *   제보 마커는 color를 위험색(red)으로, 경로 노드는 선택 상태에 따른 색으로 넘기는 식으로 호출부에서 합쳐서 사용한다.
- * - paths: [{ id, points: [{ lat, lng }], color, weight? }] 경로 폴리라인 목록 (뒤쪽 항목이 위에 그려짐)
+ * - paths: [{ id, points: [{ lat, lng }], color, weight?, style? }] 경로 폴리라인 목록 (뒤쪽 항목이 위에 그려짐)
+ *   style: 카카오맵 선 모양(strokeStyle). 기본 'solid', 횡단보도 줄무늬는 'shortdash'
  * - onMapClick: 마커가 아닌 빈 지도 영역을 클릭했을 때 좌표 콜백 (장소 이름 보기, 제보 위치 선택)
  * - crosshair: true면 커서를 십자 모양으로 바꾼다 (제보 위치 선택 중 표시용)
  * - focus: { lat, lng, level? } 이 값이 바뀔 때마다 지도를 그 위치로 이동한다 (검색한 장소 보여주기용)
@@ -164,6 +165,7 @@ export default function KakaoMap({
             strokeWeight: p.weight ?? 6,
             strokeColor: p.color,
             strokeOpacity: 0.9,
+            strokeStyle: p.style ?? 'solid',
           }),
       )
     return () => lines.forEach((l) => l.setMap(null))

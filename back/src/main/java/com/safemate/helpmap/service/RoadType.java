@@ -36,7 +36,18 @@ final class RoadType {
             "trunk", "trunk_link", "primary", "primary_link",
             "secondary", "secondary_link", "tertiary", "tertiary_link");
 
+    // 건널 때 횡단보도를 표시하는 큰 도로의 중심선~보도 거리(m, 대략값). 여기 없는 골목·램프(_link)는 그냥 지나간다.
+    private static final Map<String, Double> HALF_WIDTHS = Map.of(
+            "primary", 12.0,
+            "secondary", 9.0,
+            "tertiary", 6.0);
+
     private RoadType() {
+    }
+
+    /** 보도로 걷고 횡단보도로 건너야 하는 큰 도로면 중심선~보도 거리(m), 아니면 0 */
+    static double halfWidthMeters(String roadType) {
+        return roadType == null ? 0 : HALF_WIDTHS.getOrDefault(roadType, 0.0);
     }
 
     static double walkingFactor(String roadType) {
