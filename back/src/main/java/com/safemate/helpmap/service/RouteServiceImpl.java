@@ -35,6 +35,7 @@ public class RouteServiceImpl implements RouteService {
     private final StreetLightRepository streetLightRepository;
     private final ReportRepository reportRepository;
     private final RiskWeightCalculator riskWeightCalculator;
+    private final CrosswalkCatalog crosswalkCatalog;
 
     @Override
     public RoutesResponse findRoutes(double fromLat, double fromLng, double toLat, double toLng) {
@@ -62,9 +63,10 @@ public class RouteServiceImpl implements RouteService {
         List<Edge> safe = dijkstra(start, goal, adjacency,
                 e -> walkingCost.applyAsDouble(e) * (1 + RISK_PENALTY * risks.get(e.getId()).total()));
 
+        SidewalkPlanner sidewalks = new SidewalkPlanner(adjacency, crosswalkCatalog, start.getLatitude(), start.getLongitude());
         return new RoutesResponse(
-                toResponse(fromLat, fromLng, toLat, toLng, start, goal, shortest, risks),
-                toResponse(fromLat, fromLng, toLat, toLng, start, goal, safe, risks));
+                toResponse(fromLat, fromLng, toLat, toLng, start, goal, shortest, risks, sidewalks),
+                toResponse(fromLat, fromLng, toLat, toLng, start, goal, safe, risks, sidewalks));
     }
 
     /** 주어진 비용 함수 기준 최소 비용 경로의 간선 목록을 반환한다. */
@@ -112,10 +114,10 @@ public class RouteServiceImpl implements RouteService {
     }
 
     private RouteResponse toResponse(double fromLat, double fromLng, double toLat, double toLng,
-                                     Node start, Node goal, List<Edge> pathEdges, Map<Long, EdgeRisk> risks) {
+                                     Node start, Node goal, List<Edge> pathEdges, Map<Long, EdgeRisk> risks,
+                                     SidewalkPlanner sidewalks) {
         List<RouteResponse.Point> points = new ArrayList<>();
         points.add(toPoint(start));
-        List<RouteResponse.LatLng> geometry = new ArrayList<>();
         double total = 0;
         double dark = 0;
         double reported = 0;
@@ -123,20 +125,15 @@ public class RouteServiceImpl implements RouteService {
         // 요청 좌표(예: 검색으로 찍은 건물 위치)는 그래프 노드와 정확히 일치하지 않을 수 있다.
         // 그 사이는 도로 데이터가 없어 직선으로 이어주고, 거리/소요시간에도 반영한다.
         double startGap = GeoUtils.haversineMeters(fromLat, fromLng, start.getLatitude(), start.getLongitude());
+        double[] origin = null;
         if (startGap > SNAP_GAP_THRESHOLD_METERS) {
-            geometry.add(new RouteResponse.LatLng(fromLat, fromLng));
+            origin = new double[]{fromLat, fromLng};
             total += startGap;
         }
-        geometry.add(new RouteResponse.LatLng(start.getLatitude(), start.getLongitude()));
 
         for (Edge edge : pathEdges) {
             EdgeRisk risk = risks.get(edge.getId());
             points.add(toPoint(edge.getToNode()));
-            // 간선 시작점은 직전에 추가한 좌표(이전 간선의 끝점, 또는 시작 노드)와 같으므로 건너뛴다
-            List<double[]> shape = edge.polyline();
-            for (int i = 1; i < shape.size(); i++) {
-                geometry.add(new RouteResponse.LatLng(shape.get(i)[0], shape.get(i)[1]));
-            }
             total += edge.getDistanceMeters();
             dark += edge.getDistanceMeters() * risk.darkness();
             if (risk.hasReport()) {
@@ -145,12 +142,16 @@ public class RouteServiceImpl implements RouteService {
         }
 
         double endGap = GeoUtils.haversineMeters(goal.getLatitude(), goal.getLongitude(), toLat, toLng);
+        double[] destination = null;
         if (endGap > SNAP_GAP_THRESHOLD_METERS) {
-            geometry.add(new RouteResponse.LatLng(toLat, toLng));
+            destination = new double[]{toLat, toLng};
             total += endGap;
         }
 
-        return new RouteResponse(total, (int) Math.ceil(total / WALKING_METERS_PER_MINUTE), dark, reported, points, geometry);
+        // 지도에 그릴 모양: 큰 도로는 보도 쪽으로 옮기고, 건너는 곳은 횡단보도 구간으로 따로 알려준다
+        SidewalkPlanner.Result drawn = sidewalks.plan(start, pathEdges, origin, destination);
+        return new RouteResponse(total, (int) Math.ceil(total / WALKING_METERS_PER_MINUTE), dark, reported, points,
+                drawn.geometry(), drawn.crossings());
     }
 
     private Node nearestNode(List<Node> nodes, double lat, double lng) {
