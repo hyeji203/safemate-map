@@ -15,19 +15,15 @@ const DEMO_CENTER = { lat: 37.4488, lng: 127.1677 }
 
 // 가로등은 이 줌 레벨 이하(= 확대했을 때)에서만 표시 (카카오맵은 숫자가 작을수록 확대)
 const STREETLIGHT_MAX_LEVEL = 2
-// 보행로 그래프 노드(교차로)도 반경 확대(1150m)로 1,200개가 넘어 가로등과 같은 방식으로 확대했을 때만 표시
-const GRAPH_NODE_MAX_LEVEL = 3
 
 // 메인 지도 화면 (필수 MVP).
 // - 상단 검색창에서 장소를 고르면 지도가 그 위치로 이동하고, 하단 정보 카드에서 출발/도착으로 지정한다
 // - 출발/도착이 정해지면 최단경로(회색)와 안심경로(노랑)를 함께 그린다
-// - 노드 마커를 차례로 클릭해서 출발/도착을 정할 수도 있다 (검증용, 세 번째 클릭은 초기화)
 // - 가로등(노란 작은 점) 표시
 // - 제보 마커 표시 + 지도 빈 공간 클릭으로 제보 등록까지 연결됨
 export default function MapPage() {
 
   // 경로 탐색 (지도&경로 담당)
-  const [nodes, setNodes] = useState([])
   const [streetLights, setStreetLights] = useState([])
   const [start, setStart] = useState(null)
   const [end, setEnd] = useState(null)
@@ -44,13 +40,6 @@ export default function MapPage() {
   const [reportMode, setReportMode] = useState(false)
   const [pendingLocation, setPendingLocation] = useState(null)
   const [selectedReportGroup, setSelectedReportGroup] = useState(null) // 같은 좌표에 쌓인 제보 전체 (배열)
-
-  useEffect(() => {
-    routeApi
-      .findNodes()
-      .then((res) => setNodes(res.data))
-      .catch(() => setError('노드 목록을 불러오지 못했습니다.'))
-  }, [])
 
   useEffect(() => {
     routeApi
@@ -83,23 +72,10 @@ export default function MapPage() {
     loadReports()
   }, [loadReports])
 
-  const handleNodeClick = useCallback(
-    (marker) => {
-      if (!start) {
-        setStart(marker) // 검색으로 도착지만 먼저 정한 경우 도착지는 유지
-      } else if (end) {
-        setStart(marker)
-        setEnd(null)
-      } else {
-        setEnd(marker)
-      }
-    },
-    [start, end],
-  )
-
-  const routeMarkers = useMemo(
-    () => [
-      ...streetLights.map((l) => ({
+  // 보행로 그래프 노드(교차로)는 경로 계산에만 쓰고 지도에는 표시하지 않는다
+  const streetLightMarkers = useMemo(
+    () =>
+      streetLights.map((l) => ({
         id: `light-${l.id}`,
         lat: l.latitude,
         lng: l.longitude,
@@ -109,24 +85,10 @@ export default function MapPage() {
         subtle: true,
         maxLevel: STREETLIGHT_MAX_LEVEL,
       })),
-      ...nodes.map((n) => {
-        const isSelected = n.id === start?.id || n.id === end?.id
-        return {
-          id: n.id,
-          lat: n.latitude,
-          lng: n.longitude,
-          title: n.name,
-          color: n.id === start?.id ? colors.amber : n.id === end?.id ? colors.red : colors.navy,
-          onClick: handleNodeClick,
-          // 선택된 출발/도착 노드는 줌 레벨과 무관하게 계속 보이고, 나머지 노드(1,200개+)는 확대했을 때만 표시
-          maxLevel: isSelected ? undefined : GRAPH_NODE_MAX_LEVEL,
-        }
-      }),
-    ],
-    [nodes, streetLights, start, end, handleNodeClick],
+    [streetLights],
   )
 
-  // 주소 검색으로 정한 출발/도착은 그래프 노드가 아닐 수 있으므로, 그럴 때만 별도 핀으로 표시한다
+  // 검색으로 정한 출발/도착은 별도 핀으로 표시한다
   // 정보 카드를 보고 있는 장소도 큰 네이비 핀으로 표시한다
   const searchedPointMarkers = useMemo(() => {
     const points = []
@@ -140,16 +102,16 @@ export default function MapPage() {
         size: 24,
       })
     }
-    if (start && !nodes.some((n) => n.id === start.id)) {
+    if (start) {
       points.push({ id: start.id, lat: start.lat, lng: start.lng, title: start.title ?? '출발지', color: colors.amber, size: 20 })
     }
-    if (end && !nodes.some((n) => n.id === end.id)) {
+    if (end) {
       points.push({ id: end.id, lat: end.lat, lng: end.lng, title: end.title ?? '도착지', color: colors.red, size: 20 })
     }
     return points
-  }, [start, end, nodes, selectedPlace])
+  }, [start, end, selectedPlace])
 
-  // 장소를 고르면 지도를 그 위치로 확대 이동한다 (레벨 3: 교차로 노드까지 보이는 정도)
+  // 장소를 고르면 지도를 그 위치로 확대 이동한다 (레벨 3: 골목 단위까지 보이는 정도)
   const focus = useMemo(
     () => (selectedPlace ? { lat: selectedPlace.lat, lng: selectedPlace.lng, level: 3 } : null),
     [selectedPlace],
@@ -192,8 +154,8 @@ export default function MapPage() {
   )
 
   const allMarkers = useMemo(
-    () => [...routeMarkers, ...reportMarkers, ...searchedPointMarkers],
-    [routeMarkers, reportMarkers, searchedPointMarkers],
+    () => [...streetLightMarkers, ...reportMarkers, ...searchedPointMarkers],
+    [streetLightMarkers, reportMarkers, searchedPointMarkers],
   )
 
   // 출발/도착 중 하나라도 초기화되면 이전 경로는 숨긴다
@@ -296,11 +258,11 @@ export default function MapPage() {
               </div>
             </>
           ) : start ? (
-            `출발: ${start.title ?? '선택한 지점'} · 도착지를 검색하거나 노드를 클릭하세요`
+            `출발: ${start.title ?? '선택한 지점'} · 도착지를 검색하세요`
           ) : end ? (
-            `도착: ${end.title ?? '선택한 지점'} · 출발지를 검색하거나 노드를 클릭하세요`
+            `도착: ${end.title ?? '선택한 지점'} · 출발지를 검색하세요`
           ) : (
-            '장소를 검색하거나 노드를 클릭해 출발지를 정하세요'
+            '장소를 검색해 출발지를 정하세요'
           ))}
       </div>
 
