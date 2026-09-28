@@ -6,7 +6,8 @@ package com.safemate.helpmap.entity.type;
  */
 public enum ReportCategory {
     STREETLIGHT_BROKEN, // 가로등 고장
-    DARK_ALLEY,         // 어두움
+    DARK_ALLEY,         // 어두운 골목
     EMPTY_STREET,       // 인적 드묾
-    SIDEWALK_DAMAGED    // 인도 파손
+    SIDEWALK_DAMAGED,   // 인도 파손
+    CCTV_BLIND_SPOT     // CCTV 사각지대
 }
