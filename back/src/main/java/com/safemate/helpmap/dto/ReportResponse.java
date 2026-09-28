@@ -14,6 +14,7 @@ public record ReportResponse(
         double longitude,
         ReportCategory category,
         String imageUrl,
+        String address,
         LocalDateTime createdAt
 ) {
     public static ReportResponse from(Report report) {
@@ -24,6 +25,7 @@ public record ReportResponse(
                 report.getLongitude(),
                 report.getCategory(),
                 imageUrl,
+                report.getAddress(),
                 report.getCreatedAt()
         );
     }
