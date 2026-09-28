@@ -22,8 +22,9 @@ function loadKakaoMapSdk() {
 
 /**
  * 메인 지도 컴포넌트.
- * - markers: [{ id, lat, lng, title?, color?, size?, subtle?, maxLevel?, onClick? }] 지도 위 점 표시 (color 미지정 시 네이비, size 미지정 시 14px).
+ * - markers: [{ id, lat, lng, title?, color?, size?, subtle?, maxLevel?, onClick?, heat? }] 지도 위 점 표시 (color 미지정 시 네이비, size 미지정 시 14px).
  *   subtle: 얇은 테두리+반투명+그림자 없음. maxLevel: 지도 줌 레벨(작을수록 확대)이 이 값 이하일 때만 표시.
+ *   heat: true면 클릭 불가한 큰 반투명 그라데이션 원(제보 밀집도 표시용)으로 그림. 겹칠수록 진해져 히트맵처럼 보인다.
  *   제보 마커는 color를 위험색(red)으로, 경로 노드는 선택 상태에 따른 색으로 넘기는 식으로 호출부에서 합쳐서 사용한다.
  * - paths: [{ id, points: [{ lat, lng }], color, weight? }] 경로 폴리라인 목록 (뒤쪽 항목이 위에 그려짐)
  * - onMapClick: 마커가 아닌 빈 지도 영역을 클릭했을 때 좌표 콜백 (제보 위치 선택용)
@@ -78,6 +79,21 @@ export default function KakaoMap({
       .map((m) => {
         const el = document.createElement('div')
         el.title = m.title ?? ''
+
+        if (m.heat) {
+          const size = m.size ?? 70
+          const heatColor = m.color ?? '229,72,77'
+          el.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;pointer-events:none;background:radial-gradient(circle, rgba(${heatColor},0.55) 0%, rgba(${heatColor},0) 70%);`
+          return new kakao.maps.CustomOverlay({
+            map: mapRef.current,
+            position: new kakao.maps.LatLng(m.lat, m.lng),
+            content: el,
+            yAnchor: 0.5,
+            xAnchor: 0.5,
+            zIndex: 1,
+          })
+        }
+
         const size = m.size ?? 14
         const border = m.subtle ? 1 : 2
         el.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;border:${border}px solid #fff;background:${
@@ -100,6 +116,7 @@ export default function KakaoMap({
           content: el,
           yAnchor: 0.5,
           xAnchor: 0.5,
+          zIndex: 5,
         })
       })
     return () => overlays.forEach((o) => o.setMap(null))

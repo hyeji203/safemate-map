@@ -108,6 +108,18 @@ export default function MapPage() {
     [nodes, streetLights, start, end, handleNodeClick],
   )
 
+  // 제보가 몰린 곳을 은은하게 강조하는 히트맵 레이어. 겹칠수록 진해진다.
+  const reportHeatMarkers = useMemo(
+    () =>
+      reports.map((r) => ({
+        id: `heat-${r.id}`,
+        lat: r.latitude,
+        lng: r.longitude,
+        heat: true,
+      })),
+    [reports],
+  )
+
   const reportMarkers = useMemo(
     () =>
       reports.map((r) => ({
@@ -123,7 +135,10 @@ export default function MapPage() {
     [reports],
   )
 
-  const allMarkers = useMemo(() => [...routeMarkers, ...reportMarkers], [routeMarkers, reportMarkers])
+  const allMarkers = useMemo(
+    () => [...reportHeatMarkers, ...routeMarkers, ...reportMarkers],
+    [reportHeatMarkers, routeMarkers, reportMarkers],
+  )
 
   // 출발/도착 중 하나라도 초기화되면 이전 경로는 숨긴다
   const visibleRoutes = start && end ? routes : null
