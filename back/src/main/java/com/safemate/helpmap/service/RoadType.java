@@ -1,6 +1,7 @@
 package com.safemate.helpmap.service;
 
 import java.util.Map;
+import java.util.Set;
 
 /**
  * OSM 도로 종류별 도보 비용 배율. 1.0이 기준이고 클수록 걷기 불편/위험한 길로 보고 피한다.
@@ -28,10 +29,22 @@ final class RoadType {
             Map.entry("primary_link", 2.0),
             Map.entry("steps", 2.5));
 
+    // 도로 조명(차도 가로등)이 설치되는 간선도로. 가로등 데이터(보안등 정보 현황)는 골목·주택가 보안등만 담고
+    // 차도 가로등은 빠져 있어서, 이 도로들은 데이터상 가로등이 없어도 밝은 길로 본다.
+    // (확인 결과 데이터상 어두움 비율이 primary 95%, secondary 82%, tertiary 59%로 실제와 반대로 나왔음)
+    private static final Set<String> LIT_ARTERIALS = Set.of(
+            "trunk", "trunk_link", "primary", "primary_link",
+            "secondary", "secondary_link", "tertiary", "tertiary_link");
+
     private RoadType() {
     }
 
     static double walkingFactor(String roadType) {
         return roadType == null ? 1.0 : FACTORS.getOrDefault(roadType, 1.0);
+    }
+
+    /** 차도 가로등이 있는 것으로 보는 간선도로인지 */
+    static boolean isLitArterial(String roadType) {
+        return roadType != null && LIT_ARTERIALS.contains(roadType);
     }
 }

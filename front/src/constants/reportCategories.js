@@ -2,9 +2,10 @@
 // 카테고리 구분은 아이콘으로만 한다.
 export const REPORT_CATEGORIES = [
   { value: 'STREETLIGHT_BROKEN', label: '가로등 고장', icon: '💡' },
-  { value: 'DARK_ALLEY', label: '어두움', icon: '🌙' },
+  { value: 'DARK_ALLEY', label: '어두운 골목', icon: '🌙' },
   { value: 'EMPTY_STREET', label: '인적 드묾', icon: '🚶' },
   { value: 'SIDEWALK_DAMAGED', label: '인도 파손', icon: '🚧' },
+  { value: 'CCTV_BLIND_SPOT', label: 'CCTV 사각지대', icon: '📹' },
 ]
 
 export function categoryLabel(value) {

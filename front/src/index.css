@@ -1,3 +1,17 @@
+/* Tailwind: 기존 화면들이 브라우저 기본 스타일에 기대고 있어 preflight(전역 리셋)는 빼고 테마·유틸리티만 불러온다 */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+/* 마이페이지·하단 탭 다크 테마 색 (bg-night, bg-card, text-accent 처럼 사용) */
+@theme {
+  --color-night: #0b1528;
+  --color-card: #1a263f;
+  --color-line: #2a3857;
+  --color-muted: #94a3b8;
+  --color-accent: #ffb800;
+}
+
 :root {
   font: 16px/1.5 system-ui, 'Segoe UI', Roboto, sans-serif;
   color-scheme: light;
