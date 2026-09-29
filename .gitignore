@@ -128,6 +128,28 @@ Temporary Items
 .env.local
 .env.*.local
 *.env
+# 템플릿은 커밋 대상 (값이 비어 있는 틀)
+!.env.example
+
+# 로컬 전용 스프링 설정 (비밀번호 등을 직접 적어 쓰는 경우 대비)
+application-local.yml
+application-local.yaml
+application-local.properties
+
+# 인증서·키 파일
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# DB 덤프 (회원 정보 등 실데이터가 들어갈 수 있음)
+*.sql.gz
+*dump*.sql
+
+# 개인 에디터·도구 설정
+.claude/settings.local.json
 
 # 제보 첨부 사진 (로컬 디스크 저장, 팀원마다 다르므로 커밋하지 않음)
 **/uploads/
