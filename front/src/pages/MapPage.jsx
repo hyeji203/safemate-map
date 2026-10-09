@@ -48,6 +48,8 @@ export default function MapPage() {
 
   // 현재 위치는 화면 진입 시부터 계속 추적해서 항상 파란 점 + 바라보는 방향으로 표시한다.
   // (안드로이드 전용이라 iOS의 별도 방향 센서 권한 처리는 필요 없음)
+  // 개인정보 원칙: 현재 위치는 화면 표시에만 쓰고 저장하지 않는다.
+  // 서버 API로 보내거나 DB·localStorage 등에 남기지 말 것 (팀 결정)
   const [myLocation, setMyLocation] = useState(null)
   const [locationFocus, setLocationFocus] = useState(null) // "현재 위치로 이동" 버튼 누르면 갱신 -> 지도 이동
   const watchIdRef = useRef(null)

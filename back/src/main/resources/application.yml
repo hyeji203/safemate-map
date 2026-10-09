@@ -1,5 +1,12 @@
 server:
   port: 8080
+  servlet:
+    # 로그인 유지 기간. 브라우저를 껐다 켜도 이 기간 동안은 로그인 상태가 남는다 (서버를 재시작하면 세션이 사라져 다시 로그인 필요)
+    session:
+      timeout: 14d
+      cookie:
+        max-age: 14d
+        same-site: lax
 
 spring:
   application:

@@ -29,7 +29,7 @@ import java.util.UUID;
 public class ReportServiceImpl implements ReportService {
 
     private final ReportRepository reportRepository;
-    private final AnonymousMemberService anonymousMemberService;
+    private final CurrentMemberService currentMemberService;
     private final KakaoLocalService kakaoLocalService;
 
     @Value("${app.upload-dir}")
@@ -38,7 +38,7 @@ public class ReportServiceImpl implements ReportService {
     @Override
     @Transactional
     public ReportResponse create(ReportCreateRequest request, MultipartFile image) {
-        Member reporter = anonymousMemberService.findOrCreate(request.deviceId());
+        Member reporter = currentMemberService.resolve(request.deviceId());
         String imagePath = image == null || image.isEmpty() ? null : storeImage(image);
         String address = resolveAddress(request.latitude(), request.longitude());
 
@@ -60,7 +60,7 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     public List<ReportResponse> findMine(String deviceId) {
-        String email = AnonymousMemberService.emailOf(deviceId);
+        String email = currentMemberService.currentEmail(deviceId);
         return reportRepository.findByReporter_EmailOrderByCreatedAtDesc(email).stream()
                 .map(ReportResponse::from)
                 .toList();
@@ -72,7 +72,7 @@ public class ReportServiceImpl implements ReportService {
         Report report = reportRepository.findById(reportId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "존재하지 않는 제보입니다."));
 
-        if (!report.getReporter().getEmail().equals(AnonymousMemberService.emailOf(deviceId))) {
+        if (!report.getReporter().getEmail().equals(currentMemberService.currentEmail(deviceId))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "본인이 등록한 제보만 삭제할 수 있습니다.");
         }
 
