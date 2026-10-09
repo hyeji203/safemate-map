@@ -11,6 +11,8 @@ export default defineConfig({
   envPrefix: ['VITE_', 'REACT_APP_'],
   server: {
     port: 5173,
+    // npm run dev 실행 시 브라우저를 메인화면(지도)으로 연다
+    open: '/',
     proxy: {
       '/api': 'http://localhost:8080',
       '/uploads': 'http://localhost:8080', // 제보 첨부 사진
