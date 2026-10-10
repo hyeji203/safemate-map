@@ -33,6 +33,9 @@ public class Favorite {
     @Column(nullable = false)
     private double longitude;
 
+    // 목록에 좌표 대신 보여줄 주소. 장소 검색 결과에 주소가 없을 수 있어 nullable
+    private String address;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -41,10 +44,11 @@ public class Favorite {
         this.createdAt = LocalDateTime.now();
     }
 
-    public Favorite(Member owner, String label, double latitude, double longitude) {
+    public Favorite(Member owner, String label, double latitude, double longitude, String address) {
         this.owner = owner;
         this.label = label;
         this.latitude = latitude;
         this.longitude = longitude;
+        this.address = address;
     }
 }

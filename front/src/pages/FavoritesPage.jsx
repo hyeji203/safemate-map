@@ -1,174 +1,143 @@
-import { useEffect, useState } from 'react'
-import { colors } from '../styles/colors'
+import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { MapPin, Star } from 'lucide-react'
 import { favoriteApi } from '../api/favoriteApi'
 
-// 즐겨찾기(자주 가는 장소) 등록/조회/삭제. 하단 탭이 4개(지도·즐겨찾기·알림·마이페이지)로 바뀌면서
-// 마이페이지에 있던 기능을 독립 탭으로 옮겼다. 로그인 없이 브라우저 deviceId로 "내 것"을 구분한다.
+// 즐겨찾기(자주 가는 장소) 조회/삭제. 등록은 지도 화면의 장소 정보 카드(PlaceSheet)에서 한다.
+// 로그인 없이 브라우저 deviceId로 "내 것"을 구분한다.
 export default function FavoritesPage() {
+  const navigate = useNavigate()
   const [favorites, setFavorites] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
 
-  const [label, setLabel] = useState('')
-  const [latitude, setLatitude] = useState('')
-  const [longitude, setLongitude] = useState('')
-  const [formError, setFormError] = useState(null)
-  const [submitting, setSubmitting] = useState(false)
-
-  const loadFavorites = async () => {
+  const loadFavorites = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const { data } = await favoriteApi.findMine()
       setFavorites(data)
     } catch (err) {
       console.error('[FavoritesPage] 조회 실패', err)
+      setError('즐겨찾기를 불러오지 못했습니다.')
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     loadFavorites()
-  }, [])
+  }, [loadFavorites])
 
-  const handleAddFavorite = async (e) => {
-    e.preventDefault()
-    const lat = Number(latitude)
-    const lng = Number(longitude)
-    if (!label.trim() || Number.isNaN(lat) || Number.isNaN(lng)) {
-      setFormError('이름과 좌표(숫자)를 모두 입력해주세요.')
-      return
-    }
-    setSubmitting(true)
-    setFormError(null)
+  const handleDelete = async (favorite) => {
+    if (!window.confirm(`'${favorite.label}' 즐겨찾기를 삭제할까요?`)) return
+    setDeletingId(favorite.id)
     try {
-      await favoriteApi.create({ label: label.trim(), latitude: lat, longitude: lng })
-      setLabel('')
-      setLatitude('')
-      setLongitude('')
-      loadFavorites()
+      await favoriteApi.remove(favorite.id)
+      setFavorites((prev) => prev.filter((f) => f.id !== favorite.id))
     } catch (err) {
-      setFormError('즐겨찾기 등록에 실패했습니다.')
-      console.error('[FavoritesPage]', err)
+      console.error('[FavoritesPage] 삭제 실패', err)
+      window.alert('즐겨찾기를 삭제하지 못했습니다. 잠시 후 다시 시도해주세요.')
     } finally {
-      setSubmitting(false)
+      setDeletingId(null)
     }
   }
 
-  const handleDeleteFavorite = async (id) => {
-    if (!window.confirm('이 즐겨찾기를 삭제할까요?')) return
-    try {
-      await favoriteApi.remove(id)
-      loadFavorites()
-    } catch (err) {
-      console.error('[FavoritesPage] 즐겨찾기 삭제 실패', err)
-    }
-  }
-
-  if (loading) {
-    return <p style={{ padding: 16, color: colors.gray }}>불러오는 중...</p>
+  // 항목을 누르면 지도 화면에서 그 장소를 도착지로 정한다 (출발지는 지도에서 검색해 정하면 바로 경로가 나온다)
+  const startRoute = (favorite) => {
+    navigate('/', { state: { destination: { lat: favorite.latitude, lng: favorite.longitude, title: favorite.label } } })
   }
 
   return (
-    <div style={{ padding: 16 }}>
-      <h2 style={{ color: colors.navy, margin: '0 0 12px' }}>즐겨찾기 ({favorites.length})</h2>
-
-      <form
-        onSubmit={handleAddFavorite}
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
-          padding: 12,
-          background: colors.white,
-          borderRadius: 8,
-          boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-          marginBottom: 12,
-        }}
-      >
-        <input
-          placeholder="이름 (예: 집, 학교)"
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          style={inputStyle}
-        />
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            placeholder="위도"
-            value={latitude}
-            onChange={(e) => setLatitude(e.target.value)}
-            style={{ ...inputStyle, flex: 1, minWidth: 0 }}
-          />
-          <input
-            placeholder="경도"
-            value={longitude}
-            onChange={(e) => setLongitude(e.target.value)}
-            style={{ ...inputStyle, flex: 1, minWidth: 0 }}
-          />
+    <div className="min-h-full bg-night font-sans text-slate-200">
+      <div className="mx-auto flex w-full max-w-[430px] flex-col gap-4 px-4 pt-5 pb-6">
+        <div className="flex items-center justify-between">
+          <h1 className="m-0 text-[22px] font-bold text-white">즐겨찾기</h1>
+          {!loading && !error && <span className="text-sm text-muted">{favorites.length}곳</span>}
         </div>
-        {formError && <p style={{ color: colors.red, fontSize: 13, margin: 0 }}>{formError}</p>}
-        <button
-          type="submit"
-          disabled={submitting}
-          style={{
-            padding: 10,
-            borderRadius: 8,
-            border: 'none',
-            background: colors.navy,
-            color: colors.white,
-            fontWeight: 700,
-            opacity: submitting ? 0.6 : 1,
-          }}
-        >
-          {submitting ? '등록 중...' : '즐겨찾기 추가'}
-        </button>
-      </form>
 
-      {favorites.length === 0 ? (
-        <p style={{ color: colors.gray, fontSize: 14 }}>등록된 즐겨찾기가 없습니다.</p>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {favorites.map((f) => (
-            <div
-              key={f.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '10px 12px',
-                background: colors.white,
-                borderRadius: 8,
-                boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-              }}
+        {loading ? (
+          <p className="m-0 py-4 text-center text-sm text-muted">불러오는 중...</p>
+        ) : error ? (
+          <div className="flex flex-col items-center gap-3 py-4">
+            <p className="m-0 text-center text-sm text-muted">{error}</p>
+            <button
+              type="button"
+              onClick={loadFavorites}
+              className="cursor-pointer rounded-lg border border-solid border-line bg-transparent px-3 py-1.5 text-[13px] text-accent"
             >
-              <div style={{ flex: 1 }}>
-                <div style={{ color: colors.navy, fontSize: 14, fontWeight: 700 }}>{f.label}</div>
-                <div style={{ color: colors.gray, fontSize: 12 }}>
-                  {f.latitude.toFixed(5)}, {f.longitude.toFixed(5)}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleDeleteFavorite(f.id)}
-                style={{
-                  border: 'none',
-                  background: 'none',
-                  color: colors.red,
-                  fontSize: 13,
-                  cursor: 'pointer',
-                }}
-              >
-                삭제
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+              다시 시도
+            </button>
+          </div>
+        ) : favorites.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 rounded-2xl bg-card px-4 py-8 text-center">
+            <Star size={28} className="text-muted" aria-hidden />
+            <p className="m-0 text-sm break-keep text-muted">
+              아직 즐겨찾기한 장소가 없어요.
+              <br />
+              지도에서 장소를 검색한 뒤 ‘즐겨찾기에 추가’를 눌러보세요.
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className="cursor-pointer rounded-full border-0 bg-accent px-4 py-2 text-[13px] font-bold text-night"
+            >
+              지도에서 찾기
+            </button>
+          </div>
+        ) : (
+          <ul className="m-0 flex list-none flex-col gap-3 p-0">
+            {favorites.map((favorite) => (
+              <FavoriteCard
+                key={favorite.id}
+                favorite={favorite}
+                deleting={deletingId === favorite.id}
+                onSelect={() => startRoute(favorite)}
+                onDelete={() => handleDelete(favorite)}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   )
 }
 
-const inputStyle = {
-  padding: 10,
-  borderRadius: 8,
-  border: `1px solid ${colors.gray}`,
+// 주소가 없으면(예전에 저장했거나 검색 결과에 주소가 없던 장소) 좌표로 대신한다
+function formatLocation({ address, latitude, longitude }) {
+  if (address) return address
+  return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`
+}
+
+function FavoriteCard({ favorite, deleting, onSelect, onDelete }) {
+  return (
+    <li className="flex items-center gap-3 rounded-2xl bg-card p-4">
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-label={`${favorite.label}을(를) 도착지로 길찾기`}
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 border-0 bg-transparent p-0 text-left font-[inherit] text-inherit"
+      >
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-accent" aria-hidden>
+          <Star size={20} fill="currentColor" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[15px] font-bold text-white">{favorite.label}</div>
+          <div className="mt-0.5 flex gap-1 text-[13px] text-muted">
+            <MapPin size={14} className="mt-[3px] shrink-0" aria-hidden />
+            <span className="truncate">{formatLocation(favorite)}</span>
+          </div>
+        </div>
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        disabled={deleting}
+        className="shrink-0 cursor-pointer rounded-lg border border-solid border-line bg-transparent px-3 py-1.5 text-[13px] text-muted disabled:cursor-default disabled:opacity-60"
+      >
+        {deleting ? '삭제 중...' : '삭제'}
+      </button>
+    </li>
+  )
 }

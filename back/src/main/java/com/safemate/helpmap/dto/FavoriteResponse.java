@@ -9,6 +9,7 @@ public record FavoriteResponse(
         String label,
         double latitude,
         double longitude,
+        String address,
         LocalDateTime createdAt
 ) {
     public static FavoriteResponse from(Favorite favorite) {
@@ -17,6 +18,7 @@ public record FavoriteResponse(
                 favorite.getLabel(),
                 favorite.getLatitude(),
                 favorite.getLongitude(),
+                favorite.getAddress(),
                 favorite.getCreatedAt()
         );
     }
