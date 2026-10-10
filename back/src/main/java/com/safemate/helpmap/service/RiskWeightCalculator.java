@@ -6,6 +6,7 @@ import com.safemate.helpmap.entity.StreetLight;
 import com.safemate.helpmap.util.GeoUtils;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,14 +32,20 @@ public class RiskWeightCalculator {
     // 이 개수 이상의 제보가 있으면 제보 위험 1 (제보 밀도가 높을수록 가중치가 올라간다)
     static final int REPORTS_FOR_FULL_RISK = 2;
 
+    private static final double METERS_PER_DEG_LAT = 111_320;
+
     /** 간선 id -> 위험도 */
     public Map<Long, EdgeRisk> calculate(List<Edge> edges, List<StreetLight> lights, List<Report> reports) {
         Map<Long, EdgeRisk> risks = new HashMap<>();
+        // 간선마다 모든 가로등·제보와 거리를 재면 (간선 약 1.2만 x 가로등 약 4,600) 요청마다 4초 넘게 걸려서,
+        // 격자 칸에 나눠 담아 두고 간선 주변 칸만 본다
+        Grid<StreetLight> lightGrid = new Grid<>(lights, StreetLight::getLatitude, StreetLight::getLongitude);
+        Grid<Report> reportGrid = new Grid<>(reports, Report::getLatitude, Report::getLongitude);
         for (Edge edge : edges) {
             // 가로등은 한 지점에 여러 개일 수 있어 설치개수를 합산하고, 제보는 1건씩 센다
-            long lightCount = countNear(edge, lights, LIGHT_RADIUS_METERS,
+            long lightCount = countNear(edge, lightGrid, LIGHT_RADIUS_METERS,
                     StreetLight::getLatitude, StreetLight::getLongitude, StreetLight::getInstallCount);
-            long reportCount = countNear(edge, reports, REPORT_RADIUS_METERS,
+            long reportCount = countNear(edge, reportGrid, REPORT_RADIUS_METERS,
                     Report::getLatitude, Report::getLongitude, r -> 1);
 
             double lightsNeeded = Math.max(1, edge.getDistanceMeters() / METERS_PER_LIGHT);
@@ -53,15 +60,65 @@ public class RiskWeightCalculator {
     }
 
     /** 간선(도로 모양 폴리라인)에서 반경 이내에 있는 점들의 weight 합 */
-    private <T> long countNear(Edge edge, List<T> points, double radiusMeters,
+    private <T> long countNear(Edge edge, Grid<T> grid, double radiusMeters,
                                ToDoubleFunction<T> latitude, ToDoubleFunction<T> longitude,
                                ToIntFunction<T> weight) {
         List<double[]> line = edge.polyline();
-        return points.stream()
-                .filter(p -> distanceToPolylineMeters(latitude.applyAsDouble(p), longitude.applyAsDouble(p), line)
-                        <= radiusMeters)
-                .mapToInt(weight)
-                .sum();
+        // 간선을 감싸는 사각형을 반경만큼 넓힌 범위의 칸만 본다
+        double minLat = Double.MAX_VALUE;
+        double minLng = Double.MAX_VALUE;
+        double maxLat = -Double.MAX_VALUE;
+        double maxLng = -Double.MAX_VALUE;
+        for (double[] p : line) {
+            minLat = Math.min(minLat, p[0]);
+            maxLat = Math.max(maxLat, p[0]);
+            minLng = Math.min(minLng, p[1]);
+            maxLng = Math.max(maxLng, p[1]);
+        }
+        double dLat = radiusMeters / METERS_PER_DEG_LAT;
+        double dLng = radiusMeters / (METERS_PER_DEG_LAT * Math.cos(Math.toRadians(minLat)));
+        long sum = 0;
+        for (T p : grid.within(minLat - dLat, minLng - dLng, maxLat + dLat, maxLng + dLng)) {
+            if (distanceToPolylineMeters(latitude.applyAsDouble(p), longitude.applyAsDouble(p), line) <= radiusMeters) {
+                sum += weight.applyAsInt(p);
+            }
+        }
+        return sum;
+    }
+
+    /** 점들을 위경도 격자 칸(약 50m)에 나눠 담은 것 */
+    private static final class Grid<T> {
+        private static final double CELL_DEGREES = 0.0005;
+        private final Map<Long, List<T>> cells = new HashMap<>();
+
+        Grid(List<T> items, ToDoubleFunction<T> latitude, ToDoubleFunction<T> longitude) {
+            for (T item : items) {
+                cells.computeIfAbsent(key(cell(latitude.applyAsDouble(item)), cell(longitude.applyAsDouble(item))),
+                        k -> new ArrayList<>()).add(item);
+            }
+        }
+
+        /** 사각형 범위에 걸치는 칸들에 담긴 점 (범위 밖 점이 섞일 수 있어 거리 확인은 따로 한다) */
+        List<T> within(double minLat, double minLng, double maxLat, double maxLng) {
+            List<T> result = new ArrayList<>();
+            for (long r = cell(minLat); r <= cell(maxLat); r++) {
+                for (long c = cell(minLng); c <= cell(maxLng); c++) {
+                    List<T> items = cells.get(key(r, c));
+                    if (items != null) {
+                        result.addAll(items);
+                    }
+                }
+            }
+            return result;
+        }
+
+        private static long cell(double degrees) {
+            return (long) Math.floor(degrees / CELL_DEGREES);
+        }
+
+        private static long key(long row, long col) {
+            return row * 10_000_000L + col;
+        }
     }
 
     private double distanceToPolylineMeters(double lat, double lng, List<double[]> line) {

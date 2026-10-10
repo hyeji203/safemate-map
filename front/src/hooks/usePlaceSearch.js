@@ -60,9 +60,10 @@ export function usePlaceSearch() {
     setError(null)
   }
 
-  const reset = () => {
+  // initialQuery: 검색창에 미리 채워 둘 글자 (위쪽 출발/도착 바에서 지금 장소 이름을 고쳐 쓸 때). 검색은 고칠 때부터 한다
+  const reset = (initialQuery = '') => {
     clearTimeout(timerRef.current)
-    setQuery('')
+    setQuery(initialQuery)
     setResults([])
     setSelected(null)
     setError(null)

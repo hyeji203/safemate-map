@@ -23,10 +23,10 @@ import java.util.concurrent.Executors;
 public class KakaoLocalService {
 
     private static final String BASE_URL = "https://dapi.kakao.com";
-    // 경로 탐색 시연 지역 중심(tools/build_osm_graph.py의 CENTER와 동일).
+    // 경로 탐색 시연 지역 중심(tools/build_osm_graph.py의 BBOX 가운데, 단대오거리역 근처).
     // 검색 결과를 이 지점에서 가까운 순으로 정렬해, 그래프가 없는 먼 지역 결과보다 시연 지역 결과가 먼저 오게 한다.
-    private static final double CENTER_LAT = 37.4488;
-    private static final double CENTER_LNG = 127.1677;
+    private static final double CENTER_LAT = 37.4465;
+    private static final double CENTER_LNG = 127.1565;
 
     // 지도를 눌렀을 때 건물 이름으로 찾은 장소를 인정하는 반경(m). 캠퍼스처럼 건물이 큰 곳도 잡히도록 넉넉하게
     private static final int BUILDING_PLACE_RADIUS_METERS = 50;

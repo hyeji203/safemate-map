@@ -1,7 +1,7 @@
 import { colors } from '../styles/colors'
 
-// 경로 탐색이 가능한 시연 지역 반경(m). 도로망 그래프가 이 안에만 있다 (tools/build_osm_graph.py 기준)
-const DEMO_RADIUS_METERS = 1150
+// 경로 탐색이 가능한 시연 지역 범위. 도로망 그래프가 이 안에만 있다 (tools/build_osm_graph.py의 BBOX와 동일)
+const DEMO_BOUNDS = { south: 37.435, west: 127.123, north: 37.458, east: 127.19 }
 
 /**
  * 검색으로 고른 장소의 정보 카드 (지도 하단에서 올라오는 시트). 출발/도착 버튼으로 경로 지점을 지정한다.
@@ -10,7 +10,11 @@ const DEMO_RADIUS_METERS = 1150
 export default function PlaceSheet({ place, onClose, onSetStart, onSetEnd }) {
   if (!place) return null
 
-  const outOfArea = place.distanceMeters > DEMO_RADIUS_METERS
+  const outOfArea =
+    place.lat < DEMO_BOUNDS.south ||
+    place.lat > DEMO_BOUNDS.north ||
+    place.lng < DEMO_BOUNDS.west ||
+    place.lng > DEMO_BOUNDS.east
 
   return (
     <div
@@ -50,7 +54,7 @@ export default function PlaceSheet({ place, onClose, onSetStart, onSetEnd }) {
 
       {outOfArea && (
         <div style={{ marginTop: 12, fontSize: 12, color: colors.red }}>
-          안심경로 시연 지역(신구대~단대오거리역) 밖이라 경로가 나오지 않을 수 있어요.
+          안심경로 시연 지역(가천대역~상대원동) 밖이라 경로가 나오지 않을 수 있어요.
         </div>
       )}
 

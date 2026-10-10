@@ -22,13 +22,14 @@ function loadKakaoMapSdk() {
 
 /**
  * 메인 지도 컴포넌트.
- * - markers: [{ id, lat, lng, title?, color?, size?, subtle?, maxLevel?, onClick?, badge?, pin?, label? }] 지도 위 점 표시 (color 미지정 시 네이비, size 미지정 시 14px).
- *   subtle: 얇은 테두리+반투명+그림자 없음. maxLevel: 지도 줌 레벨(작을수록 확대)이 이 값 이하일 때만 표시.
+ * - markers: [{ id, lat, lng, title?, color?, size?, subtle?, glow?, maxLevel?, onClick?, badge?, pin?, label? }] 지도 위 점 표시 (color 미지정 시 네이비, size 미지정 시 14px).
+ *   subtle: 얇은 테두리+반투명+그림자 없음. glow: 점 주변에 같은 색 빛 번짐 (가로등용). maxLevel: 지도 줌 레벨(작을수록 확대)이 이 값 이하일 때만 표시.
  *   badge: 오른쪽 위에 작은 숫자 표시 (같은 위치에 여러 건 묶였을 때 개수 표시용).
  *   pin: true면 물방울 모양 핀으로 그림 (선택한 장소 표시용). label을 주면 핀 아래에 이름표를 붙인다.
+ *   crosswalk: true면 횡단보도 줄무늬 배지(흰 원)로 그린다 (경로에서 건너기 시작하는 곳 표시용).
  *   제보 마커는 color를 위험색(red)으로, 경로 노드는 선택 상태에 따른 색으로 넘기는 식으로 호출부에서 합쳐서 사용한다.
- * - paths: [{ id, points: [{ lat, lng }], color, weight?, style? }] 경로 폴리라인 목록 (뒤쪽 항목이 위에 그려짐)
- *   style: 카카오맵 선 모양(strokeStyle). 기본 'solid', 횡단보도 줄무늬는 'shortdash'
+ * - paths: [{ id, points: [{ lat, lng }], color, weight?, style?, opacity? }] 경로 폴리라인 목록 (뒤쪽 항목이 위에 그려짐)
+ *   style: 카카오맵 선 모양(strokeStyle). 기본 'solid'
  * - onMapClick: 마커가 아닌 빈 지도 영역을 클릭했을 때 좌표 콜백 (장소 이름 보기, 제보 위치 선택)
  * - crosshair: true면 커서를 십자 모양으로 바꾼다 (제보 위치 선택 중 표시용)
  * - focus: { lat, lng, level? } 이 값이 바뀔 때마다 지도를 그 위치로 이동한다 (검색한 장소 보여주기용)
@@ -71,6 +72,8 @@ export default function KakaoMap({
           level,
         })
         const map = mapRef.current
+        // 개발 모드 전용: 횡단보도 좌표 확인 때 콘솔에서 지도를 특정 좌표로 옮길 수 있게 노출 (배포 빌드에는 없음)
+        if (import.meta.env.DEV) window.__devMap = map
         window.kakao.maps.event.addListener(map, 'zoom_changed', () => setZoomLevel(map.getLevel()))
         setMapReady(true)
       })
@@ -119,19 +122,42 @@ export default function KakaoMap({
           })
         }
 
+        if (m.crosswalk) {
+          // 횡단보도 배지: 흰 원 + 진한 테두리 + 비스듬한 줄무늬 (경로선 위에 얹어 건너기 시작하는 곳을 표시)
+          el.style.cssText =
+            'width:26px;height:26px;border-radius:50%;background:#fff;border:2.5px solid #1F2937;' +
+            'box-sizing:border-box;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.35)'
+          el.innerHTML = `<svg width="15" height="9" viewBox="0 0 15 9" xmlns="http://www.w3.org/2000/svg" fill="#1F2937">
+            <path d="M2 0h2L2.5 9h-2z"/><path d="M5.5 0h2L6 9H4z"/><path d="M9 0h2L9.5 9h-2z"/><path d="M12.5 0h2L13 9h-2z"/></svg>`
+          return new kakao.maps.CustomOverlay({
+            map: mapRef.current,
+            position: new kakao.maps.LatLng(m.lat, m.lng),
+            content: el,
+            yAnchor: 0.5,
+            xAnchor: 0.5,
+            zIndex: 6, // 일반 점 마커보다 위, 출발/도착 핀보다 아래
+          })
+        }
+
         const size = m.size ?? 14
+        const color = m.color ?? '#1A2B4C'
         const border = m.subtle ? 1 : 2
-        el.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;border:${border}px solid #fff;background:${
-          m.color ?? '#1A2B4C'
-        };opacity:${m.subtle ? 0.7 : 1};box-shadow:${
-          m.subtle ? 'none' : '0 1px 4px rgba(0,0,0,.4)'
-        };cursor:${m.onClick ? 'pointer' : 'default'}`
+        // glow: 흰 테두리 밖에 옅은 윤곽선 + 같은 색 빛 번짐 (color는 #RRGGBB 형식이어야 투명도 접미사가 붙는다)
+        const shadow = m.glow
+          ? `0 0 0 1px rgba(0,0,0,.12),0 0 8px 5px ${color}59`
+          : m.subtle
+            ? 'none'
+            : '0 1px 4px rgba(0,0,0,.4)'
+        el.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;border:${border}px solid #fff;background:${color};opacity:${
+          m.subtle ? 0.7 : 1
+        };box-shadow:${shadow};cursor:${m.onClick ? 'pointer' : 'default'}`
         if (m.icon) {
           el.style.display = 'flex'
           el.style.alignItems = 'center'
           el.style.justifyContent = 'center'
           el.style.fontSize = `${Math.round(size * 0.65)}px`
           el.style.lineHeight = '1'
+          el.style.color = '#fff' // 숫자 아이콘용 (이모지는 색 영향 없음)
           el.textContent = m.icon
         }
         if (m.badge) {
@@ -171,7 +197,7 @@ export default function KakaoMap({
             path: p.points.map((pt) => new kakao.maps.LatLng(pt.lat, pt.lng)),
             strokeWeight: p.weight ?? 6,
             strokeColor: p.color,
-            strokeOpacity: 0.9,
+            strokeOpacity: p.opacity ?? 0.9,
             strokeStyle: p.style ?? 'solid',
           }),
       )

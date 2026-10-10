@@ -18,11 +18,13 @@ final class RoadType {
             Map.entry("service", 1.1),
             Map.entry("unclassified", 1.1),
             Map.entry("track", 1.2),
-            Map.entry("tertiary", 1.2),
-            Map.entry("tertiary_link", 1.2),
-            // secondary는 대체로 보도가 확보된 간선도로다(예: 광명로는 OSM에 sidewalk=both로 명시돼 있음).
+            // secondary·tertiary는 대체로 보도가 확보된 간선도로다(예: 광명로는 OSM에 sidewalk=both로 명시돼 있음).
             // residential과 동일하게 잡아서, 실제로는 큰 차이 안 나는 거리인데 큰 도로라는 이유만으로
             // 부자연스럽게 좁은 골목으로 돌아가지 않게 한다. 다만 정말 차량 위주인 primary는 그대로 높게 둔다.
+            // (tertiary를 1.2로 두었더니 secondary보다 불리해져서, 광명로 갈림길에서 단대오거리로 곧장 가는 tertiary 대신
+            //  20m 더 먼 secondary로 돌아가며 횡단보도 없는 곳에서 건너는 경로가 나왔음)
+            Map.entry("tertiary", 1.0),
+            Map.entry("tertiary_link", 1.0),
             Map.entry("secondary", 1.0),
             Map.entry("secondary_link", 1.0),
             Map.entry("primary", 2.0),
@@ -36,11 +38,15 @@ final class RoadType {
             "trunk", "trunk_link", "primary", "primary_link",
             "secondary", "secondary_link", "tertiary", "tertiary_link");
 
-    // 건널 때 횡단보도를 표시하는 큰 도로의 중심선~보도 거리(m, 대략값). 여기 없는 골목·램프(_link)는 그냥 지나간다.
+    // 건널 때 횡단보도를 표시하는 큰 도로의 중심선~보도 거리(m, 대략값). 여기 없는 골목은 그냥 지나간다.
+    // _link는 큰 교차로 안의 연결 차로(예: 단대오거리 가운데)라서, 그냥 지나가게 두면 교차로 한가운데를 가로질러 걷는 경로가 나온다
     private static final Map<String, Double> HALF_WIDTHS = Map.of(
             "primary", 12.0,
             "secondary", 9.0,
-            "tertiary", 6.0);
+            "tertiary", 4.5, // 2차로 도로(자혜로 등): 6m로는 카카오맵 보도보다 건물 쪽으로 밀려 보여서 줄임
+            "primary_link", 4.5,
+            "secondary_link", 4.5,
+            "tertiary_link", 4.5);
 
     private RoadType() {
     }

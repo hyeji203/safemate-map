@@ -1,7 +1,7 @@
 """
 OpenStreetMap 도로망에서 시연 지역의 보행 그래프(교차로 노드 + 간선)를 만들어 CSV로 저장한다.
 
-- 데이터: OpenStreetMap 공식 API(bbox 조회). (c) OpenStreetMap contributors, ODbL
+- 데이터: OpenStreetMap, Overpass API로 시연 지역의 도로(highway)만 조회. (c) OpenStreetMap contributors, ODbL
 - 출력: back/src/main/resources/data/graph-nodes.csv, graph-edges.csv (UTF-8)
   edges 컬럼: fromIndex,toIndex,distanceMeters,roadType(OSM highway 값),geometry("위도 경도;위도 경도;..." from->to 도로 모양)
 - 사용법:  python tools/build_osm_graph.py            # OSM에서 새로 받아 생성
@@ -13,15 +13,14 @@ OpenStreetMap 도로망에서 시연 지역의 보행 그래프(교차로 노드
 import argparse
 import collections
 import math
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-# 시연 지역: 신구대학교(성남시 중원구 금광동) 중심, 카카오 로컬 API 키워드 검색 결과
-CENTER = (37.4488, 127.1677)
-# 시연 범위. 단대오거리역(8호선)까지 실제 경로가 나오도록 반경을 늘림 (신구대~단대오거리역 직선거리 약 1050m + 여유분).
-# 참고: 220m = 노드 25개, 250m = 62개, 400m = 156개, 500m = 273개
-RADIUS_METERS = 1150
+# 시연 지역(남, 서, 북, 동). 서쪽 가천대역 ~ 동쪽 상대원동, 북쪽 단대동 ~ 남쪽 수진역/중앙동까지의 사각형
+# (약 5.9km x 2.6km, 신구대·단대오거리역·신흥역 포함). 예전에는 신구대 중심 반경 1150m 원이었다.
+BBOX = (37.4350, 127.1230, 37.4580, 127.1900)
 
 # 보행 가능한 것으로 보는 도로 종류
 WALKABLE = {
@@ -85,14 +84,18 @@ def merge_close_junctions(junction_ids, pos):
 
 
 def fetch_osm_xml():
-    # 반경보다 넉넉하게(약 +100m) 받아서 가장자리 도로가 잘리지 않게 한다
-    margin = RADIUS_METERS + 100
-    d_lat = margin / 111_000
-    d_lng = margin / (111_000 * math.cos(math.radians(CENTER[0])))
-    bbox = f"{CENTER[1] - d_lng},{CENTER[0] - d_lat},{CENTER[1] + d_lng},{CENTER[0] + d_lat}"
-    url = f"https://api.openstreetmap.org/api/0.6/map?bbox={bbox}"
-    req = urllib.request.Request(url, headers={"User-Agent": "safemate-map-student-project/1.0"})
-    return urllib.request.urlopen(req, timeout=60).read()
+    # 시연 지역보다 넉넉하게(약 +100m) 받아서 가장자리 도로가 잘리지 않게 한다.
+    # 범위가 넓어 OSM 공식 API(/map, 노드 5만 개 제한)로는 건물까지 다 받아져 막히므로 Overpass로 도로만 받는다
+    d_lat = 100 / 111_000
+    d_lng = 100 / (111_000 * math.cos(math.radians(BBOX[0])))
+    south, west, north, east = BBOX[0] - d_lat, BBOX[1] - d_lng, BBOX[2] + d_lat, BBOX[3] + d_lng
+    query = f"way[highway]({south},{west},{north},{east});(._;>;);out body;"
+    req = urllib.request.Request(
+        "https://overpass-api.de/api/interpreter",
+        data=urllib.parse.urlencode({"data": query}).encode(),
+        headers={"User-Agent": "safemate-map-student-project/1.0"},
+    )
+    return urllib.request.urlopen(req, timeout=180).read()
 
 
 def build_graph(xml_bytes):
@@ -112,7 +115,10 @@ def build_graph(xml_bytes):
         ways.append((highway, [n.get("ref") for n in w.findall("nd")]))
 
     def inside(node_id):
-        return node_id in pos and haversine(*CENTER, *pos[node_id]) <= RADIUS_METERS
+        if node_id not in pos:
+            return False
+        lat, lng = pos[node_id]
+        return BBOX[0] <= lat <= BBOX[2] and BBOX[1] <= lng <= BBOX[3]
 
     # 둘 이상의 way가 지나거나 way의 끝인 점 = 교차로/끝점
     usage = collections.Counter()
