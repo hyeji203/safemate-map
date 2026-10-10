@@ -1,0 +1,164 @@
+/* 사용가이드 각 단계의 움짤(반복 애니메이션). 모든 장면은 같은 6초 주기로 돈다.
+   탭 표시(.tut-tap)는 하나의 키프레임을 쓰고, 누르는 시점은 animation-delay(음수)로 옮긴다. */
+
+.tut-scene {
+  --tut-duration: 6s;
+}
+
+.tut-scene * {
+  animation-duration: var(--tut-duration);
+  animation-iteration-count: infinite;
+  animation-fill-mode: both;
+}
+
+/* 손가락으로 누르는 표시 */
+.tut-tap {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border-radius: 9999px;
+  border: 2px solid #fff;
+  background: rgba(255, 255, 255, 0.45);
+  box-shadow: 0 0 0 2px rgba(26, 43, 76, 0.35);
+  pointer-events: none;
+  opacity: 0;
+  animation-name: tut-tap;
+}
+@keyframes tut-tap {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  3% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  10% { opacity: 0; transform: translate(-50%, -50%) scale(1.7); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.7); }
+}
+
+/* 경로 선 그리기 (pathLength=1 기준) */
+.tut-draw-a,
+.tut-draw-b {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+}
+.tut-draw-a { animation-name: tut-draw-a; }
+.tut-draw-b { animation-name: tut-draw-b; }
+@keyframes tut-draw-a {
+  0%, 5% { stroke-dashoffset: 1; opacity: 1; }
+  35%, 92% { stroke-dashoffset: 0; opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
+}
+@keyframes tut-draw-b {
+  0%, 35% { stroke-dashoffset: 1; opacity: 1; }
+  65%, 92% { stroke-dashoffset: 0; opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+/* 1단계: 가로등이 켜짐 */
+.tut-lamp { animation-name: tut-lamp; }
+@keyframes tut-lamp {
+  0%, 30% { opacity: 0.25; }
+  38%, 92% { opacity: 1; }
+  100% { opacity: 0.25; }
+}
+
+/* 1단계: 사람이 안심경로(출발 → 모퉁이 → 도착)를 따라 걷는다. 좌표는 TutorialScenes의 START·END와 같은 % */
+.tut-walker { animation-name: tut-walker; transform: translate(-50%, -50%); left: 78.125%; top: 26.667%; }
+@keyframes tut-walker {
+  0%, 38% { left: 18.75%; top: 73.333%; opacity: 0; }
+  40% { left: 18.75%; top: 73.333%; opacity: 1; }
+  72% { left: 78.125%; top: 73.333%; opacity: 1; }
+  88%, 94% { left: 78.125%; top: 26.667%; opacity: 1; }
+  100% { left: 78.125%; top: 26.667%; opacity: 0; }
+}
+
+/* 2단계: 검색어 입력 → 핀 → 장소 카드 → 도착 누르기 */
+.tut-type {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: bottom;
+  width: 6.2em;
+  animation-name: tut-type;
+}
+@keyframes tut-type {
+  0%, 5% { width: 0; animation-timing-function: steps(6, end); }
+  30%, 100% { width: 6.2em; }
+}
+.tut-drop { animation-name: tut-drop; }
+@keyframes tut-drop {
+  0%, 30% { opacity: 0; transform: translate(-50%, -150%); }
+  38%, 92% { opacity: 1; transform: translate(-50%, -100%); }
+  100% { opacity: 0; transform: translate(-50%, -100%); }
+}
+.tut-sheet { animation-name: tut-sheet; }
+@keyframes tut-sheet {
+  0%, 40% { transform: translateY(110%); }
+  48%, 92% { transform: translateY(0); }
+  100% { transform: translateY(110%); }
+}
+.tut-pick { animation-name: tut-pick; }
+@keyframes tut-pick {
+  0%, 68% { background: #fff; }
+  71%, 92% { background: #ffb020; }
+  100% { background: #fff; }
+}
+
+/* 4단계: 제보 버튼 → 안내 배너 → 지도 누르기 → 빨간 마커 → 완료 */
+.tut-report-btn { animation-name: tut-report-btn; }
+@keyframes tut-report-btn {
+  0%, 14% { background: #1a2b4c; }
+  17%, 92% { background: #e5484d; }
+  100% { background: #1a2b4c; }
+}
+.tut-banner { animation-name: tut-banner; }
+@keyframes tut-banner {
+  0%, 17% { opacity: 0; transform: translate(-50%, -6px); }
+  22%, 88% { opacity: 1; transform: translate(-50%, 0); }
+  94%, 100% { opacity: 0; transform: translate(-50%, 0); }
+}
+.tut-marker { animation-name: tut-marker; }
+@keyframes tut-marker {
+  0%, 45% { opacity: 0; transform: translate(-50%, -160%); }
+  52%, 92% { opacity: 1; transform: translate(-50%, -100%); }
+  100% { opacity: 0; transform: translate(-50%, -100%); }
+}
+.tut-toast { animation-name: tut-toast; }
+@keyframes tut-toast {
+  0%, 58% { opacity: 0; transform: translate(-50%, 6px); }
+  63%, 90% { opacity: 1; transform: translate(-50%, 0); }
+  96%, 100% { opacity: 0; transform: translate(-50%, 0); }
+}
+
+/* 5단계: 즐겨찾기 탭 → 저장된 장소 / 마이 탭 → 사용가이드 다시 보기 */
+.tut-tab-1 { animation-name: tut-tab-1; }
+@keyframes tut-tab-1 {
+  0%, 14% { color: #94a3b8; }
+  16%, 52% { color: #ffb800; }
+  55%, 100% { color: #94a3b8; }
+}
+.tut-tab-2 { animation-name: tut-tab-2; }
+@keyframes tut-tab-2 {
+  0%, 54% { color: #94a3b8; }
+  57%, 94% { color: #ffb800; }
+  98%, 100% { color: #94a3b8; }
+}
+.tut-page-1 { animation-name: tut-page-1; }
+@keyframes tut-page-1 {
+  0%, 16% { opacity: 0; transform: translateY(6px); }
+  22%, 50% { opacity: 1; transform: none; }
+  54%, 100% { opacity: 0; transform: none; }
+}
+.tut-page-2 { animation-name: tut-page-2; }
+@keyframes tut-page-2 {
+  0%, 56% { opacity: 0; transform: translateY(6px); }
+  62%, 92% { opacity: 1; transform: none; }
+  97%, 100% { opacity: 0; transform: none; }
+}
+
+/* 움직임 줄이기 설정이면 애니메이션 없이 마지막 장면만 보여 준다 */
+@media (prefers-reduced-motion: reduce) {
+  .tut-scene * { animation: none !important; }
+  .tut-tap, .tut-page-1 { opacity: 0; }
+  .tut-drop, .tut-marker { transform: translate(-50%, -100%); }
+  .tut-banner, .tut-toast { transform: translate(-50%, 0); }
+  .tut-report-btn { background: #e5484d; }
+  .tut-pick { background: #ffb020; }
+  .tut-tab-2 { color: #ffb800; }
+}

@@ -45,8 +45,10 @@ export default function FavoritesPage() {
   }
 
   // 항목을 누르면 지도 화면에서 그 장소를 도착지로 정한다 (출발지는 지도에서 검색해 정하면 바로 경로가 나온다)
+  // address는 경로 계산 때 서버가 출입구 쪽 도로를 고르는 데 쓴다 (없으면 좌표만으로 계산)
   const startRoute = (favorite) => {
-    navigate('/', { state: { destination: { lat: favorite.latitude, lng: favorite.longitude, title: favorite.label } } })
+    const { latitude: lat, longitude: lng, label: title, address } = favorite
+    navigate('/', { state: { destination: { lat, lng, title, address: address ?? undefined } } })
   }
 
   return (

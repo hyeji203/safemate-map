@@ -22,15 +22,20 @@ function loadKakaoMapSdk() {
 
 /**
  * 메인 지도 컴포넌트.
- * - markers: [{ id, lat, lng, title?, color?, size?, subtle?, maxLevel?, onClick?, badge?, pin?, label? }] 지도 위 점 표시 (color 미지정 시 네이비, size 미지정 시 14px).
- *   subtle: 얇은 테두리+반투명+그림자 없음. maxLevel: 지도 줌 레벨(작을수록 확대)이 이 값 이하일 때만 표시.
+ * - markers: [{ id, lat, lng, title?, color?, size?, subtle?, glow?, maxLevel?, onClick?, badge?, pin?, label? }] 지도 위 점 표시 (color 미지정 시 네이비, size 미지정 시 14px).
+ *   subtle: 얇은 테두리+반투명+그림자 없음. glow: 점 주변에 같은 색 빛 번짐 (가로등용). maxLevel: 지도 줌 레벨(작을수록 확대)이 이 값 이하일 때만 표시.
  *   badge: 오른쪽 위에 작은 숫자 표시 (같은 위치에 여러 건 묶였을 때 개수 표시용).
  *   pin: true면 물방울 모양 핀으로 그림 (선택한 장소 표시용). label을 주면 핀 아래에 이름표를 붙인다.
+ *   crosswalk: true면 횡단보도 줄무늬 배지(흰 원)로 그린다 (경로에서 건너기 시작하는 곳 표시용).
  *   제보 마커는 color를 위험색(red)으로, 경로 노드는 선택 상태에 따른 색으로 넘기는 식으로 호출부에서 합쳐서 사용한다.
- * - paths: [{ id, points: [{ lat, lng }], color, weight? }] 경로 폴리라인 목록 (뒤쪽 항목이 위에 그려짐)
+ * - paths: [{ id, points: [{ lat, lng }], color, weight?, style?, opacity? }] 경로 폴리라인 목록 (뒤쪽 항목이 위에 그려짐)
+ *   style: 카카오맵 선 모양(strokeStyle). 기본 'solid'
  * - onMapClick: 마커가 아닌 빈 지도 영역을 클릭했을 때 좌표 콜백 (장소 이름 보기, 제보 위치 선택)
  * - crosshair: true면 커서를 십자 모양으로 바꾼다 (제보 위치 선택 중 표시용)
  * - focus: { lat, lng, level? } 이 값이 바뀔 때마다 지도를 그 위치로 이동한다 (검색한 장소 보여주기용)
+ * - myLocation: { lat, lng } | null. 있으면 파란 핀 모양으로 현재 위치를 표시 (null이면 표시 안 함)
+ * - heading: 기기가 바라보는 방향(도, 정북 기준 시계방향) | null. 있으면 파란 점에 방향 부채꼴을 얹는다.
+ *   heading은 자주 바뀔 수 있어 마커를 다시 만들지 않고 회전만 직접 갱신한다 (myLocation과 분리한 이유).
  * center/level은 최초 렌더링에만 적용된다.
  */
 export default function KakaoMap({
@@ -41,11 +46,15 @@ export default function KakaoMap({
   onMapClick,
   crosshair = false,
   focus,
+  myLocation,
+  heading,
 }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const [mapReady, setMapReady] = useState(false)
   const [zoomLevel, setZoomLevel] = useState(level)
+  const myLocationOverlayRef = useRef(null)
+  const myLocationConeRef = useRef(null)
 
   useEffect(() => {
     if (!KAKAO_JS_KEY) {
@@ -63,6 +72,8 @@ export default function KakaoMap({
           level,
         })
         const map = mapRef.current
+        // 개발 모드 전용: 횡단보도 좌표 확인 때 콘솔에서 지도를 특정 좌표로 옮길 수 있게 노출 (배포 빌드에는 없음)
+        if (import.meta.env.DEV) window.__devMap = map
         window.kakao.maps.event.addListener(map, 'zoom_changed', () => setZoomLevel(map.getLevel()))
         setMapReady(true)
       })
@@ -111,19 +122,42 @@ export default function KakaoMap({
           })
         }
 
+        if (m.crosswalk) {
+          // 횡단보도 배지: 흰 원 + 진한 테두리 + 비스듬한 줄무늬 (경로선 위에 얹어 건너기 시작하는 곳을 표시)
+          el.style.cssText =
+            'width:26px;height:26px;border-radius:50%;background:#fff;border:2.5px solid #1F2937;' +
+            'box-sizing:border-box;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.35)'
+          el.innerHTML = `<svg width="15" height="9" viewBox="0 0 15 9" xmlns="http://www.w3.org/2000/svg" fill="#1F2937">
+            <path d="M2 0h2L2.5 9h-2z"/><path d="M5.5 0h2L6 9H4z"/><path d="M9 0h2L9.5 9h-2z"/><path d="M12.5 0h2L13 9h-2z"/></svg>`
+          return new kakao.maps.CustomOverlay({
+            map: mapRef.current,
+            position: new kakao.maps.LatLng(m.lat, m.lng),
+            content: el,
+            yAnchor: 0.5,
+            xAnchor: 0.5,
+            zIndex: 6, // 일반 점 마커보다 위, 출발/도착 핀보다 아래
+          })
+        }
+
         const size = m.size ?? 14
+        const color = m.color ?? '#1A2B4C'
         const border = m.subtle ? 1 : 2
-        el.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;border:${border}px solid #fff;background:${
-          m.color ?? '#1A2B4C'
-        };opacity:${m.subtle ? 0.7 : 1};box-shadow:${
-          m.subtle ? 'none' : '0 1px 4px rgba(0,0,0,.4)'
-        };cursor:${m.onClick ? 'pointer' : 'default'}`
+        // glow: 흰 테두리 밖에 옅은 윤곽선 + 같은 색 빛 번짐 (color는 #RRGGBB 형식이어야 투명도 접미사가 붙는다)
+        const shadow = m.glow
+          ? `0 0 0 1px rgba(0,0,0,.12),0 0 8px 5px ${color}59`
+          : m.subtle
+            ? 'none'
+            : '0 1px 4px rgba(0,0,0,.4)'
+        el.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;border:${border}px solid #fff;background:${color};opacity:${
+          m.subtle ? 0.7 : 1
+        };box-shadow:${shadow};cursor:${m.onClick ? 'pointer' : 'default'}`
         if (m.icon) {
           el.style.display = 'flex'
           el.style.alignItems = 'center'
           el.style.justifyContent = 'center'
           el.style.fontSize = `${Math.round(size * 0.65)}px`
           el.style.lineHeight = '1'
+          el.style.color = '#fff' // 숫자 아이콘용 (이모지는 색 영향 없음)
           el.textContent = m.icon
         }
         if (m.badge) {
@@ -163,7 +197,8 @@ export default function KakaoMap({
             path: p.points.map((pt) => new kakao.maps.LatLng(pt.lat, pt.lng)),
             strokeWeight: p.weight ?? 6,
             strokeColor: p.color,
-            strokeOpacity: 0.9,
+            strokeOpacity: p.opacity ?? 0.9,
+            strokeStyle: p.style ?? 'solid',
           }),
       )
     return () => lines.forEach((l) => l.setMap(null))
@@ -176,6 +211,66 @@ export default function KakaoMap({
     if (focus.level != null) map.setLevel(focus.level)
     map.panTo(new window.kakao.maps.LatLng(focus.lat, focus.lng))
   }, [mapReady, focus])
+
+  // 현재 위치: 파란 점 + 주변 블러(halo) + 바라보는 방향 부채꼴로 표시.
+  // heading은 자주 바뀌므로 마커를 매번 다시 만들지 않고, 최초 1회만 만든 뒤 위치/회전만 갱신한다.
+  useEffect(() => {
+    if (!mapReady || !myLocation) return
+    const { kakao } = window
+    const position = new kakao.maps.LatLng(myLocation.lat, myLocation.lng)
+
+    if (!myLocationOverlayRef.current) {
+      const el = document.createElement('div')
+      el.title = '현재 위치'
+      el.style.cssText = 'position:relative;width:38px;height:38px;display:flex;align-items:center;justify-content:center;'
+      el.innerHTML =
+        '<div style="position:absolute;width:38px;height:38px;border-radius:50%;background:radial-gradient(circle, rgba(47,111,238,0.8) 0%, rgba(47,111,238,0.45) 45%, rgba(47,111,238,0) 72%);"></div>' +
+        '<div class="loc-cone" style="position:absolute;top:50%;left:50%;width:70px;height:70px;' +
+        'clip-path:polygon(50% 50%, 35% 0%, 65% 0%);background:linear-gradient(rgba(47,111,238,0.55), rgba(47,111,238,0));' +
+        'display:none;transform-origin:50% 50%;transform:translate(-50%,-50%);"></div>' +
+        '<div style="position:relative;width:16px;height:16px;border-radius:50%;background:#2F6FEE;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);"></div>'
+      myLocationConeRef.current = el.querySelector('.loc-cone')
+      myLocationOverlayRef.current = new kakao.maps.CustomOverlay({
+        map: mapRef.current,
+        position,
+        content: el,
+        yAnchor: 0.5,
+        xAnchor: 0.5,
+        zIndex: 6,
+      })
+    } else {
+      myLocationOverlayRef.current.setPosition(position)
+    }
+  }, [mapReady, myLocation])
+
+  // 바라보는 방향(도, 정북 기준 시계방향)이 바뀌면 부채꼴 회전만 갱신 (마커 재생성 없음)
+  useEffect(() => {
+    const cone = myLocationConeRef.current
+    if (!cone) return
+    if (heading == null) {
+      cone.style.display = 'none'
+    } else {
+      cone.style.display = 'block'
+      cone.style.transform = `translate(-50%, -50%) rotate(${heading}deg)`
+    }
+  }, [heading])
+
+  // 현재 위치 표시가 꺼지면(=null) 마커를 지운다
+  useEffect(() => {
+    if (myLocation) return
+    if (myLocationOverlayRef.current) {
+      myLocationOverlayRef.current.setMap(null)
+      myLocationOverlayRef.current = null
+      myLocationConeRef.current = null
+    }
+  }, [myLocation])
+
+  // 언마운트 시 정리
+  useEffect(() => {
+    return () => {
+      myLocationOverlayRef.current?.setMap(null)
+    }
+  }, [])
 
   // 지도 빈 공간 클릭 시 좌표 전달 (마커 클릭은 각 마커 자체의 onClick이 처리하므로 서로 안 겹침)
   useEffect(() => {

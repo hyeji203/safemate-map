@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MapPin, User } from 'lucide-react'
+import { BookOpen, ChevronRight, MapPin, User } from 'lucide-react'
 import { reportApi } from '../api/reportApi'
 import { categoryIcon, categoryLabel } from '../constants/reportCategories'
+import { useAuth } from '../hooks/useAuth'
+import { useTutorial } from '../hooks/useTutorial'
 
-// 아직 로그인이 없어 표시용 고정 프로필을 쓴다.
-const PROFILE = { nickname: '밤길지킴이', email: 'safewalker@dowajwo-map.kr' }
-
-// Member.reliabilityScore 조회 API가 아직 없어 고정값으로 표시한다.
+// 로그인 안 한(익명) 사용자는 신뢰도 점수를 서버에서 받을 수 없어 고정값으로 표시한다.
 const RELIABILITY_SCORE = 95
 
 // 마이페이지: 프로필, 제보 신뢰도 점수, 내 제보 내역. 하단 탭은 App 공통 BottomNav가 그린다.
 export default function MyPage() {
   const navigate = useNavigate()
+  const { member } = useAuth()
+  const { reopen } = useTutorial()
   const [reports, setReports] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -32,9 +33,11 @@ export default function MyPage() {
     }
   }, [])
 
+  // 서버가 로그인 회원 → deviceId 순으로 "내 것"을 판단하므로, 로그인/로그아웃하면 목록을 다시 불러온다
+  const memberEmail = member?.email
   useEffect(() => {
     loadReports()
-  }, [loadReports])
+  }, [loadReports, memberEmail])
 
   const handleCancel = async (id) => {
     if (!window.confirm('이 제보를 취소할까요?')) return
@@ -61,7 +64,19 @@ export default function MyPage() {
         <h1 className="m-0 text-[22px] font-bold text-white">마이페이지</h1>
 
         <ProfileCard />
-        <ReliabilityScore score={RELIABILITY_SCORE} />
+        <button
+          type="button"
+          onClick={reopen}
+          data-testid="usage-guide-replay"
+          className="flex cursor-pointer items-center gap-3 rounded-2xl border border-solid border-line bg-card px-4 py-3.5 text-left text-white"
+        >
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-accent" aria-hidden>
+            <BookOpen size={20} />
+          </span>
+          <span className="min-w-0 flex-1 text-[15px] font-bold">사용가이드 다시 보기</span>
+          <ChevronRight size={18} className="shrink-0 text-muted" aria-hidden />
+        </button>
+        <ReliabilityScore score={member?.reliabilityScore ?? RELIABILITY_SCORE} />
 
         <section className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
@@ -103,8 +118,20 @@ export default function MyPage() {
   )
 }
 
+// 로그인했으면 계정 정보 + 로그아웃, 아니면 익명 이용 안내 + 로그인 버튼
 function ProfileCard() {
   const navigate = useNavigate()
+  const { member, loading, logout } = useAuth()
+
+  const handleLogout = async () => {
+    if (!window.confirm('로그아웃할까요?')) return
+    try {
+      await logout()
+    } catch (err) {
+      console.error('[MyPage] 로그아웃 실패', err)
+      window.alert('로그아웃에 실패했습니다. 잠시 후 다시 시도해주세요.')
+    }
+  }
 
   return (
     <section className="flex items-center gap-3 rounded-2xl bg-card p-4">
@@ -112,16 +139,39 @@ function ProfileCard() {
         <User size={26} className="text-muted" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-base font-bold text-white">{PROFILE.nickname}</div>
-        <div className="truncate text-[13px] text-muted">{PROFILE.email}</div>
+        {member ? (
+          <>
+            <div className="truncate text-base font-bold text-white">{member.nickname}</div>
+            <div className="truncate text-[13px] text-muted">{member.email}</div>
+          </>
+        ) : (
+          <>
+            <div className="text-base font-bold text-white">익명 사용자</div>
+            <div className="text-[13px] break-keep text-muted">
+              {loading ? '로그인 상태 확인 중…' : '로그인하면 다른 기기에서도 내 기록을 볼 수 있어요'}
+            </div>
+          </>
+        )}
       </div>
-      <button
-        type="button"
-        onClick={() => navigate('/login')}
-        className="shrink-0 cursor-pointer rounded-full border border-solid border-line bg-transparent px-3 py-1.5 text-[13px] text-muted"
-      >
-        로그아웃
-      </button>
+      {member ? (
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="shrink-0 cursor-pointer rounded-full border border-solid border-line bg-transparent px-3 py-1.5 text-[13px] text-muted"
+        >
+          로그아웃
+        </button>
+      ) : (
+        !loading && (
+          <button
+            type="button"
+            onClick={() => navigate('/login')}
+            className="shrink-0 cursor-pointer rounded-full border-none bg-accent px-3 py-1.5 text-[13px] font-bold text-night"
+          >
+            로그인
+          </button>
+        )
+      )}
     </section>
   )
 }
