@@ -13,6 +13,10 @@ export default defineConfig({
     port: 5173,
     // npm run dev 실행 시 브라우저를 메인화면(지도)으로 연다
     open: '/',
+    // 개발 모드에서 직접 찍은 횡단보도 CSV(백엔드 리소스)를 지도에 표시하려고 그 폴더만 추가로 읽게 허용
+    fs: {
+      allow: ['.', '../back/src/main/resources/data'],
+    },
     proxy: {
       '/api': 'http://localhost:8080',
       '/uploads': 'http://localhost:8080', // 제보 첨부 사진

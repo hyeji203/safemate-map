@@ -5,24 +5,60 @@ import KakaoMap from '../components/KakaoMap'
 import PlaceSearchBar, { PlaceResults } from '../components/PlaceSearchBar'
 import PlaceSheet from '../components/PlaceSheet'
 import { usePlaceSearch } from '../hooks/usePlaceSearch'
+import { useRouteHistory } from '../hooks/useRouteHistory'
 import ReportModal from '../components/ReportModal'
 import ReportDetail from '../components/ReportDetail'
 import { reportApi } from '../api/reportApi'
 import { colors } from '../styles/colors'
 import { categoryLabel, categoryIcon } from '../constants/reportCategories'
 
-// 신구대학교 인근 시연 지역 중심 (tools/build_osm_graph.py의 CENTER와 동일)
-const DEMO_CENTER = { lat: 37.4488, lng: 127.1677 }
+// 시연 지역(가천대역~상대원동) 중심 (tools/build_osm_graph.py의 BBOX 가운데)
+const DEMO_CENTER = { lat: 37.4465, lng: 127.1565 }
 
 // 가로등은 이 줌 레벨 이하(= 확대했을 때)에서만 표시 (카카오맵은 숫자가 작을수록 확대)
 // 장소 검색 후 이동하는 레벨(2)에서도 보이도록 2으로 맞춘다
 const STREETLIGHT_MAX_LEVEL = 2
 
+// 횡단보도 좌표 찍기 모드: 개발 모드에서 루트 .env에 REACT_APP_CROSSWALK_SURVEY=true 를 넣었을 때만 켜진다.
+// 시연 때 개발 서버(npm run dev)로 띄워도 줄 번호 마커·좌표 안내가 보이지 않도록 기본은 꺼 둔다. 배포 빌드에는 들어가지 않는다.
+const CROSSWALK_SURVEY = import.meta.env.DEV && import.meta.env.REACT_APP_CROSSWALK_SURVEY === 'true'
+
+// 좌표 찍기 모드 전용: 직접 찍은 횡단보도(crosswalks-surveyed.csv)를 지도에 CSV 줄 번호로 표시한다.
+// 파일을 저장하면 바로 다시 그려진다 (백엔드 경로 계산에 반영하려면 백엔드는 재시작해야 함).
+const SURVEYED_CROSSWALK_CSV = CROSSWALK_SURVEY
+  ? (Object.values(
+      import.meta.glob('../../../back/src/main/resources/data/crosswalks-surveyed.csv', {
+        query: '?raw',
+        import: 'default',
+        eager: true,
+      }),
+    )[0] ?? '')
+  : ''
+
+function parseSurveyedCrosswalks(csv) {
+  return csv
+    .split(/\r?\n/)
+    .map((text, i) => ({ text, lineNo: i + 1 }))
+    .slice(1) // 헤더
+    .filter(({ text }) => text.trim())
+    .map(({ text, lineNo }) => {
+      const cols = text.split(',').map((c) => c.trim())
+      return { lineNo, text, lat: Number(cols[1]), lng: Number(cols[2]), diagonal: cols[4] === 'true' }
+    })
+    .filter((c) => Number.isFinite(c.lat) && Number.isFinite(c.lng))
+}
+
+// 가로등 점 색: 카카오 POI 아이콘(주황 계열)과 헷갈리지 않도록 amber보다 밝은 노랑을 쓴다
+const STREETLIGHT_COLOR = '#FFD21F'
+
+// 경로선·경로 카드 색 (안심경로 = 노랑, 최단경로 = 회색)
+const ROUTE_COLORS = { safe: colors.amber, shortest: colors.gray }
+
 // 메인 지도 화면 (필수 MVP).
 // - 상단 검색창에서 장소를 고르면 지도가 그 위치로 이동하고, 하단 정보 카드에서 출발/도착으로 지정한다
 // - 지도 빈 곳을 누르면 그 곳의 장소 이름(없으면 주소)이 정보 카드로 뜬다
 // - 출발/도착이 정해지면 최단경로(회색)와 안심경로(노랑)를 함께 그린다
-// - 가로등(노란 작은 점) 표시
+// - 가로등(빛 번짐이 있는 노란 작은 점) 표시
 // - 제보 마커 표시 + 지도 빈 공간 클릭으로 제보 등록까지 연결됨
 export default function MapPage() {
 
@@ -32,13 +68,17 @@ export default function MapPage() {
   const [editingPoint, setEditingPoint] = useState(null) // 위쪽 바에서 바꾸는 중인 지점: 'start' | 'end' | null
   const [end, setEnd] = useState(null)
   const [routes, setRoutes] = useState(null) // { shortest, safe }
+  const [selectedRouteKey, setSelectedRouteKey] = useState('safe') // 아래 카드에서 고른 경로: 'safe' | 'shortest'
   const [routeRefreshKey, setRouteRefreshKey] = useState(0) // 제보 등록 후 경로를 다시 계산하기 위한 트리거
   const [error, setError] = useState(null)
 
   // 지도 상단 장소 검색. 결과를 고르면 search.selected가 정보 카드로 표시된다
   const search = usePlaceSearch()
+  const routeHistory = useRouteHistory() // 최근 길찾기 (이 브라우저에만 저장)
+  const addRouteHistory = routeHistory.add
   const selectedPlace = search.selected
   const mapClickSeqRef = useRef(0) // 지도 클릭 장소 조회 순번 (늦게 도착한 이전 응답 무시용)
+  const [devCoord, setDevCoord] = useState(null) // 좌표 찍기 모드 전용: 마지막으로 누른 곳의 횡단보도 CSV 한 줄 + 복사 여부
 
   // 제보 (제보하기 담당)
   const [reports, setReports] = useState([])
@@ -108,13 +148,22 @@ export default function MapPage() {
   useEffect(() => {
     if (!start || !end) return
     routeApi
-      .findRoute({ fromLat: start.lat, fromLng: start.lng, toLat: end.lat, toLng: end.lng })
+      .findRoute({
+        fromLat: start.lat,
+        fromLng: start.lng,
+        toLat: end.lat,
+        toLng: end.lng,
+        fromAddress: start.address,
+        toAddress: end.address,
+      })
       .then((res) => {
         setRoutes(res.data)
         setError(null)
+        addRouteHistory(start, end)
       })
       .catch(() => setError('경로를 찾지 못했습니다.'))
-  }, [start, end, routeRefreshKey])
+    // addRouteHistory는 useCallback이라 바뀌지 않아서 경로를 다시 찾게 만들지 않는다
+  }, [start, end, routeRefreshKey, addRouteHistory])
 
   const loadReports = useCallback(async () => {
     try {
@@ -137,9 +186,9 @@ export default function MapPage() {
         lat: l.latitude,
         lng: l.longitude,
         title: '가로등',
-        color: colors.amber,
-        size: 6,
-        subtle: true,
+        color: STREETLIGHT_COLOR,
+        size: 8,
+        glow: true, // 빛 번짐으로 가로등이 모인 골목은 환하게, 없는 곳은 어둡게 보이도록
         maxLevel: STREETLIGHT_MAX_LEVEL,
       })),
     [streetLights],
@@ -181,7 +230,13 @@ export default function MapPage() {
   )
 
   const setPlaceAs = (setter, id) => {
-    setter({ id, lat: selectedPlace.lat, lng: selectedPlace.lng, title: selectedPlace.name })
+    setter({
+      id,
+      lat: selectedPlace.lat,
+      lng: selectedPlace.lng,
+      title: selectedPlace.name,
+      address: selectedPlace.address, // 도로명주소면 서버가 출입구 쪽 도로를 고르는 데 쓴다
+    })
     search.reset()
   }
 
@@ -216,55 +271,78 @@ export default function MapPage() {
     [reportGroups],
   )
 
-  const allMarkers = useMemo(
-    () => [...streetLightMarkers, ...reportMarkers, ...searchedPointMarkers],
-    [streetLightMarkers, reportMarkers, searchedPointMarkers],
+  // 좌표 찍기 모드 전용: 직접 찍은 횡단보도. 숫자 = CSV 줄 번호, 보라 = 일반, 분홍 = 대각선
+  const surveyedCrosswalkMarkers = useMemo(
+    () =>
+      !CROSSWALK_SURVEY
+        ? []
+        : parseSurveyedCrosswalks(SURVEYED_CROSSWALK_CSV).map((c) => ({
+            id: `surveyed-crosswalk-${c.lineNo}`,
+            lat: c.lat,
+            lng: c.lng,
+            title: `crosswalks-surveyed.csv ${c.lineNo}번째 줄${c.diagonal ? ' (대각선)' : ''}: ${c.text}`,
+            color: c.diagonal ? '#DB2777' : '#7C3AED',
+            size: 18,
+            icon: String(c.lineNo),
+            maxLevel: 4,
+          })),
+    [],
   )
 
   // 출발/도착 중 하나라도 초기화되면 이전 경로는 숨긴다
   const visibleRoutes = start && end ? routes : null
 
-  // 최단경로(회색, 굵게)를 아래에, 안심경로(노랑, 가늘게)를 위에 그려 겹쳐도 둘 다 보이게 한다
-  // 큰 도로를 건너는 곳은 맨 위에 횡단보도 모양(네이비 바탕 + 흰 줄무늬)으로 그린다
+  // 고른 경로에서 큰 도로를 건너는 곳은 네이버지도처럼 건너기 시작하는 지점에 횡단보도 배지를 단다
+  // (경로선은 끊지 않고 그대로 둔다)
+  const crossingMarkers = useMemo(() => {
+    if (!visibleRoutes) return []
+    return (visibleRoutes[selectedRouteKey].crossings ?? []).map((c) => ({
+      id: `crossing-${c.start.latitude},${c.start.longitude}`,
+      lat: c.start.latitude,
+      lng: c.start.longitude,
+      title: c.hasSignal ? '신호등 있는 횡단보도' : '횡단보도',
+      crosswalk: true,
+    }))
+  }, [visibleRoutes, selectedRouteKey])
+
+  const allMarkers = useMemo(
+    () => [
+      ...streetLightMarkers,
+      ...surveyedCrosswalkMarkers,
+      ...reportMarkers,
+      ...crossingMarkers,
+      ...searchedPointMarkers,
+    ],
+    [streetLightMarkers, surveyedCrosswalkMarkers, reportMarkers, crossingMarkers, searchedPointMarkers],
+  )
+
+  // 고른 경로는 굵고 진하게 맨 위에, 다른 경로는 가늘고 흐리게 아래에 깔아 비교만 할 수 있게 한다
   const paths = useMemo(() => {
     if (!visibleRoutes) return []
     // geometry = 실제 도로 모양(굽은 길 포함), 없으면 교차로만 직선으로 잇는다
     const toPoints = (route) =>
       (route.geometry?.length ? route.geometry : route.path).map((p) => ({ lat: p.latitude, lng: p.longitude }))
-    const toLatLng = (p) => ({ lat: p.latitude, lng: p.longitude })
-    // 두 경로가 같은 곳에서 건너면 한 번만 그린다
-    const crossings = new Map()
-    for (const route of [visibleRoutes.shortest, visibleRoutes.safe]) {
-      for (const c of route.crossings ?? []) {
-        crossings.set(`${c.start.latitude},${c.start.longitude},${c.end.latitude},${c.end.longitude}`, c)
-      }
-    }
-    const crossingPaths = [...crossings.entries()].flatMap(([key, c]) => {
-      const points = [toLatLng(c.start), toLatLng(c.end)]
-      return [
-        { id: `crossing-base-${key}`, points, color: colors.navy, weight: 14 },
-        { id: `crossing-stripe-${key}`, points, color: colors.white, weight: 10, style: 'shortdash' },
-      ]
-    })
+    const otherKey = selectedRouteKey === 'safe' ? 'shortest' : 'safe'
     return [
-      { id: 'shortest', points: toPoints(visibleRoutes.shortest), color: colors.gray, weight: 10 },
-      { id: 'safe', points: toPoints(visibleRoutes.safe), color: colors.amber, weight: 5 },
-      ...crossingPaths,
+      { id: otherKey, points: toPoints(visibleRoutes[otherKey]), color: ROUTE_COLORS[otherKey], weight: 5, opacity: 0.4 },
+      { id: selectedRouteKey, points: toPoints(visibleRoutes[selectedRouteKey]), color: ROUTE_COLORS[selectedRouteKey], weight: 9 },
     ]
-  }, [visibleRoutes])
+  }, [visibleRoutes, selectedRouteKey])
 
   // 정한 출발/도착과 그려진 경로를 모두 지우고 처음 상태로 돌아간다
   const resetRoute = () => {
     setStart(null)
     setEnd(null)
     setRoutes(null)
+    setSelectedRouteKey('safe')
     setError(null)
     setEditingPoint(null)
   }
 
-  // 위쪽 "출발 → 도착" 바에서 한쪽을 누르면 그 자리가 검색창으로 바뀐다
+  // 위쪽 "출발 → 도착" 바에서 한쪽을 누르면 그 자리가 검색창으로 바뀐다.
+  // 지금 장소 이름을 그대로 채워 두고 고쳐 쓰게 한다 (비우면 원래 글자가 지워진 것처럼 보여서)
   const startEditingPoint = (which) => {
-    search.reset()
+    search.reset((which === 'start' ? start : end)?.title ?? '')
     setEditingPoint(which)
   }
 
@@ -275,7 +353,7 @@ export default function MapPage() {
 
   // 변경 중인 검색창에서 결과를 고르면 정보 카드 없이 바로 출발/도착을 바꾼다 (경로는 자동으로 다시 계산됨)
   const applyEditedPoint = (place) => {
-    const point = { lat: place.latitude, lng: place.longitude, title: place.placeName }
+    const point = { lat: place.latitude, lng: place.longitude, title: place.placeName, address: place.addressName }
     if (editingPoint === 'start') setStart({ id: 'place-start', ...point })
     else setEnd({ id: 'place-end', ...point })
     cancelEditingPoint()
@@ -283,6 +361,18 @@ export default function MapPage() {
 
   // 지도 빈 곳을 누르면: 제보 모드일 때는 제보 위치로 쓰고, 아닐 때는 그 곳의 장소 이름을 찾아 정보 카드로 띄운다
   const handleMapClick = async (latlng) => {
+    // 좌표 찍기 모드 전용: 횡단보도 좌표 보정용. 지도를 최대로 확대해 줄무늬 가운데를 누르면
+    // back/src/main/resources/data/crosswalks-surveyed.csv 에 붙여 넣을 한 줄을 화면에 띄우고 클립보드에 복사한다
+    // (도로명·신호등 유무는 붙여 넣은 뒤 직접 고침)
+    if (CROSSWALK_SURVEY) {
+      const line = `도로명,${latlng.lat.toFixed(6)},${latlng.lng.toFixed(6)},true`
+      console.log(`[횡단보도 좌표] ${line}`)
+      setDevCoord({ line, copied: false })
+      navigator.clipboard
+        ?.writeText(line)
+        .then(() => setDevCoord((cur) => (cur?.line === line ? { line, copied: true } : cur)))
+        .catch(() => {})
+    }
     // 빠르게 여러 번 누르면 마지막으로 누른 곳의 결과만 보여준다
     const seq = ++mapClickSeqRef.current
     if (reportMode) {
@@ -311,7 +401,7 @@ export default function MapPage() {
     <div style={{ position: 'relative', height: '100%' }}>
       <KakaoMap
         center={DEMO_CENTER}
-        level={6} // 시연 지역 반경이 1150m라 처음부터 단대오거리역까지 한눈에 보이도록 축소
+        level={6} // 시연 지역(약 5.9km x 2.6km)이 처음부터 한눈에 보이도록 축소
         markers={allMarkers}
         paths={paths}
         onMapClick={handleMapClick}
@@ -320,6 +410,30 @@ export default function MapPage() {
         myLocation={myLocation}
         heading={heading}
       />
+
+      {CROSSWALK_SURVEY && devCoord && (
+        // 좌표 찍기 모드 전용 좌표 표시. 누르면 닫힌다
+        <div
+          onClick={() => setDevCoord(null)}
+          style={{
+            position: 'absolute',
+            zIndex: 20,
+            top: 72,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            padding: '6px 10px',
+            borderRadius: 6,
+            background: 'rgba(26,43,76,.9)',
+            color: '#fff',
+            fontSize: 13,
+            fontFamily: 'monospace',
+            whiteSpace: 'nowrap',
+            cursor: 'pointer',
+          }}
+        >
+          {devCoord.line} {devCoord.copied ? '(복사됨)' : ''}
+        </div>
+      )}
 
 
       <div
@@ -387,7 +501,19 @@ export default function MapPage() {
             {editingPoint && <PlaceResults search={search} onSelect={applyEditedPoint} />}
           </div>
         ) : (
-          <PlaceSearchBar search={search} />
+          <PlaceSearchBar
+            search={search}
+            history={{
+              items: routeHistory.items,
+              // 최근 길찾기를 누르면 그 출발→도착을 그대로 다시 찾는다 (경로는 자동으로 계산됨)
+              onPick: (item) => {
+                setStart({ id: 'place-start', ...item.start })
+                setEnd({ id: 'place-end', ...item.end })
+              },
+              onRemove: routeHistory.remove,
+              onClear: routeHistory.clear,
+            }}
+          />
         )}
       </div>
 
@@ -412,7 +538,8 @@ export default function MapPage() {
       )}
 
       {visibleRoutes && !error && !selectedPlace ? (
-        // 경로가 나오면 아래에 안심경로·최단경로 카드를 따로따로 띄운다 (테두리 색 = 지도 위 경로선 색)
+        // 경로가 나오면 아래에 안심경로·최단경로 카드를 따로따로 띄운다 (테두리 색 = 지도 위 경로선 색).
+        // 카드를 누르면 그 경로를 골라 지도에 강조한다
         <div
           style={{
             position: 'absolute',
@@ -425,8 +552,20 @@ export default function MapPage() {
             color: colors.navy,
           }}
         >
-          <RouteCard label="안심경로" color={colors.amber} route={visibleRoutes.safe} />
-          <RouteCard label="최단경로" color={colors.gray} route={visibleRoutes.shortest} />
+          <RouteCard
+            label="안심경로"
+            color={ROUTE_COLORS.safe}
+            route={visibleRoutes.safe}
+            selected={selectedRouteKey === 'safe'}
+            onSelect={() => setSelectedRouteKey('safe')}
+          />
+          <RouteCard
+            label="최단경로"
+            color={ROUTE_COLORS.shortest}
+            route={visibleRoutes.shortest}
+            selected={selectedRouteKey === 'shortest'}
+            onSelect={() => setSelectedRouteKey('shortest')}
+          />
         </div>
       ) : (
         <div
@@ -604,10 +743,12 @@ function RoutePoint({ color, name, label, editing, search, onEdit, onCancel }) {
         {dot}
         <input
           autoFocus
+          // 채워 둔 장소 이름 끝에 커서를 둔다 (이어서 고치거나 지울 수 있게)
+          onFocus={(e) => e.target.setSelectionRange(e.target.value.length, e.target.value.length)}
           value={search.query}
           onChange={(e) => search.onQueryChange(e.target.value)}
           onKeyDown={(e) => e.key === 'Escape' && onCancel()}
-          placeholder={`${label} 검색 (${name})`}
+          placeholder={`${label} 검색`}
           aria-label={`${label} 검색`}
           style={{
             flex: 1,
@@ -649,16 +790,27 @@ const routePointStyle = {
   cursor: 'pointer',
 }
 
-// 경로 한 개의 요약 카드. 테두리와 제목 글자 색(color)은 지도 위 경로선 색과 같다
-function RouteCard({ label, color, route }) {
+// 경로 한 개의 요약 카드. 테두리와 제목 글자 색(color)은 지도 위 경로선 색과 같다.
+// 고른 카드(selected)는 진하게, 안 고른 카드는 흐리게 보여 지금 어느 경로를 안내 중인지 알 수 있게 한다
+function RouteCard({ label, color, route, selected, onSelect }) {
   const crossings = route.crossings ?? []
   // 공공데이터(횡단보도 표준데이터)로 보행자 신호등이 확인된 곳만 센다
   const signalCount = crossings.filter((c) => c.hasSignal).length
   return (
-    <div
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
       style={{
         flex: 1,
         minWidth: 0,
+        textAlign: 'left',
+        font: 'inherit',
+        color: 'inherit',
+        cursor: 'pointer',
+        opacity: selected ? 1 : 0.6,
+        transform: selected ? 'translateY(-4px)' : 'none',
+        transition: 'opacity .15s, transform .15s',
         border: `3px solid ${color}`,
         borderRadius: 10,
         padding: '10px 12px',
@@ -679,6 +831,6 @@ function RouteCard({ label, color, route }) {
       <div style={{ fontSize: 12, color: colors.gray }}>
         횡단보도 {crossings.length}회{signalCount > 0 && ` · 신호등 ${signalCount}곳`}
       </div>
-    </div>
+    </button>
   )
 }
