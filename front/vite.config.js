@@ -9,6 +9,8 @@ export default defineConfig({
   envDir: '..',
   // 기획 문서 관례상 REACT_APP_ 접두사를 쓰기로 했으므로 Vite 기본(VITE_)에 추가로 허용
   envPrefix: ['VITE_', 'REACT_APP_'],
+  // sockjs-client가 Node 전역 변수 global을 참조해서, 브라우저에서 "global is not defined"로 앱이 멈추지 않도록 globalThis로 바꿔 넣는다
+  define: { global: 'globalThis' },
   server: {
     port: 5173,
     // npm run dev 실행 시 브라우저를 메인화면(지도)으로 연다
