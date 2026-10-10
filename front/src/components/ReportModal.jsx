@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { colors } from '../styles/colors'
 import { reportApi } from '../api/reportApi'
+import { useNotifications } from '../hooks/useNotifications'
 import { REPORT_CATEGORIES as CATEGORIES } from '../constants/reportCategories'
 
 /**
@@ -15,6 +16,7 @@ export default function ReportModal({ location, onClose, onSubmitted }) {
   const [preview, setPreview] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
+  const { markMine } = useNotifications()
 
   useEffect(() => {
     if (!location) return
@@ -39,12 +41,14 @@ export default function ReportModal({ location, onClose, onSubmitted }) {
     setSubmitting(true)
     setError(null)
     try {
-      await reportApi.create({
+      const { data } = await reportApi.create({
         latitude: location.lat,
         longitude: location.lng,
         category,
         image,
       })
+      // 내가 올린 제보는 알림에서 뺀다
+      markMine(data.id)
       onSubmitted?.()
     } catch (err) {
       setError('제보 등록에 실패했습니다. 잠시 후 다시 시도해주세요.')

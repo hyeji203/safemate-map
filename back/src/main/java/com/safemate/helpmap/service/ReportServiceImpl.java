@@ -9,8 +9,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -31,6 +34,7 @@ public class ReportServiceImpl implements ReportService {
     private final ReportRepository reportRepository;
     private final CurrentMemberService currentMemberService;
     private final KakaoLocalService kakaoLocalService;
+    private final SimpMessagingTemplate messagingTemplate;
 
     @Value("${app.upload-dir}")
     private String uploadDir;
@@ -45,10 +49,11 @@ public class ReportServiceImpl implements ReportService {
         Report report = new Report(reporter, request.latitude(), request.longitude(), request.category(), imagePath, address);
         Report saved = reportRepository.save(report);
 
-        // TODO(고도화 1단계): 여기서 SimpMessagingTemplate으로 /topic/reports 브로드캐스트
+        ReportResponse response = ReportResponse.from(saved);
+        broadcastAfterCommit(response);
         // 경로 계산(RouteServiceImpl) 때마다 RiskWeightCalculator가 제보를 조회해 위험도에 반영하므로 별도 갱신 로직은 없다
 
-        return ReportResponse.from(saved);
+        return response;
     }
 
     @Override
@@ -80,6 +85,21 @@ public class ReportServiceImpl implements ReportService {
             deleteImageFile(report.getImagePath());
         }
         reportRepository.delete(report);
+    }
+
+    // 새 제보를 /topic/reports 구독자(프론트 알림)에게 보낸다. 커밋 전에 보내면 롤백된 제보가 알림으로 나갈 수 있어서
+    // 커밋이 끝난 뒤에 보낸다. 전송 실패는 제보 등록 결과에 영향을 주지 않도록 로그만 남긴다.
+    private void broadcastAfterCommit(ReportResponse response) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    messagingTemplate.convertAndSend("/topic/reports", response);
+                } catch (Exception e) {
+                    log.warn("제보 브로드캐스트 실패: reportId={}", response.id(), e);
+                }
+            }
+        });
     }
 
     // 주소 변환은 부가 정보라, 카카오 API 호출이 실패해도 제보 등록 자체는 막지 않고 주소만 비워둔다.
