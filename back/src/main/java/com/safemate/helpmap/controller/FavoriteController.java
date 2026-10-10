@@ -21,7 +21,7 @@ public class FavoriteController {
 
     @PostMapping
     public ResponseEntity<FavoriteResponse> create(@RequestBody @Valid FavoriteRequestBody body) {
-        var request = new FavoriteCreateRequest(body.deviceId(), body.label(), body.latitude(), body.longitude());
+        var request = new FavoriteCreateRequest(body.deviceId(), body.label(), body.latitude(), body.longitude(), body.address());
         return ResponseEntity.status(HttpStatus.CREATED).body(favoriteService.create(request));
     }
 
@@ -40,7 +40,8 @@ public class FavoriteController {
             @NotBlank String deviceId,
             @NotBlank String label,
             double latitude,
-            double longitude
+            double longitude,
+            String address
     ) {
     }
 }

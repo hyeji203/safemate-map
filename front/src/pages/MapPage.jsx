@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { routeApi } from '../api/routeApi'
 import { placeApi } from '../api/placeApi'
 import KakaoMap from '../components/KakaoMap'
@@ -9,6 +10,7 @@ import { useRouteHistory } from '../hooks/useRouteHistory'
 import ReportModal from '../components/ReportModal'
 import ReportDetail from '../components/ReportDetail'
 import { reportApi } from '../api/reportApi'
+import { favoriteApi } from '../api/favoriteApi'
 import { colors } from '../styles/colors'
 import { categoryLabel, categoryIcon } from '../constants/reportCategories'
 
@@ -18,6 +20,15 @@ const DEMO_CENTER = { lat: 37.4465, lng: 127.1565 }
 // 가로등은 이 줌 레벨 이하(= 확대했을 때)에서만 표시 (카카오맵은 숫자가 작을수록 확대)
 // 장소 검색 후 이동하는 레벨(2)에서도 보이도록 2으로 맞춘다
 const STREETLIGHT_MAX_LEVEL = 2
+
+// 선택한 장소가 이미 즐겨찾기에 있는지 볼 때, 이 거리(m) 안이면 같은 장소로 본다
+const SAME_PLACE_METERS = 5
+
+function isSamePlace(favorite, place) {
+  const dLat = (favorite.latitude - place.lat) * 111_000
+  const dLng = (favorite.longitude - place.lng) * 111_000 * Math.cos((place.lat * Math.PI) / 180)
+  return Math.hypot(dLat, dLng) <= SAME_PLACE_METERS
+}
 
 // 횡단보도 좌표 찍기 모드: 개발 모드에서 루트 .env에 REACT_APP_CROSSWALK_SURVEY=true 를 넣었을 때만 켜진다.
 // 시연 때 개발 서버(npm run dev)로 띄워도 줄 번호 마커·좌표 안내가 보이지 않도록 기본은 꺼 둔다. 배포 빌드에는 들어가지 않는다.
@@ -61,12 +72,27 @@ const ROUTE_COLORS = { safe: colors.amber, shortest: colors.gray }
 // - 가로등(빛 번짐이 있는 노란 작은 점) 표시
 // - 제보 마커 표시 + 지도 빈 공간 클릭으로 제보 등록까지 연결됨
 export default function MapPage() {
+  // 다른 화면에서 navigate('/', { state })로 넘긴 값. 최초 마운트 때 한 번만 읽는다.
+  // - focus: { lat, lng }        그 위치에서 지도를 연다 (마이페이지 제보 내역)
+  // - destination: { lat, lng, title }  그 장소를 도착지로 정한 채 연다 (즐겨찾기)
+  // KakaoMap은 center/level을 최초 생성 때만 쓰고, 이 화면은 이동할 때마다 새로 마운트되므로 초기 중심으로 넘기면 된다.
+  const location = useLocation()
+  const navigate = useNavigate()
+  const [routedState] = useState(() => location.state ?? {})
+  const initialFocus = routedState.focus ?? routedState.destination
+
+  // 읽은 뒤에는 history의 state를 비워서, 새로고침했을 때 같은 위치/도착지로 다시 열리지 않게 한다
+  useEffect(() => {
+    if (location.state) navigate(location.pathname, { replace: true })
+  }, [location, navigate])
 
   // 경로 탐색 (지도&경로 담당)
   const [streetLights, setStreetLights] = useState([])
   const [start, setStart] = useState(null)
   const [editingPoint, setEditingPoint] = useState(null) // 위쪽 바에서 바꾸는 중인 지점: 'start' | 'end' | null
-  const [end, setEnd] = useState(null)
+  const [end, setEnd] = useState(() =>
+    routedState.destination ? { id: 'place-end', ...routedState.destination } : null,
+  )
   const [routes, setRoutes] = useState(null) // { shortest, safe }
   const [selectedRouteKey, setSelectedRouteKey] = useState('safe') // 아래 카드에서 고른 경로: 'safe' | 'shortest'
   const [routeRefreshKey, setRouteRefreshKey] = useState(0) // 제보 등록 후 경로를 다시 계산하기 위한 트리거
@@ -177,6 +203,32 @@ export default function MapPage() {
   useEffect(() => {
     loadReports()
   }, [loadReports])
+
+  // 즐겨찾기 (마이페이지 담당). 장소 정보 카드에 "즐겨찾기됨" 표시를 하려고 미리 불러 둔다
+  const [favorites, setFavorites] = useState([])
+
+  useEffect(() => {
+    favoriteApi
+      .findMine()
+      .then((res) => setFavorites(res.data))
+      .catch((err) => console.error('[MapPage] 즐겨찾기 조회 실패', err))
+  }, [])
+
+  const selectedFavorite = useMemo(
+    () => (selectedPlace ? favorites.find((f) => isSamePlace(f, selectedPlace)) : null),
+    [favorites, selectedPlace],
+  )
+
+  // 실패하면 PlaceSheet가 에러 문구를 보여주도록 예외를 그대로 넘긴다
+  const addFavorite = async (label) => {
+    const { data } = await favoriteApi.create({
+      label,
+      latitude: selectedPlace.lat,
+      longitude: selectedPlace.lng,
+      address: selectedPlace.address || null,
+    })
+    setFavorites((prev) => [data, ...prev])
+  }
 
   // 보행로 그래프 노드(교차로)는 경로 계산에만 쓰고 지도에는 표시하지 않는다
   const streetLightMarkers = useMemo(
@@ -400,8 +452,9 @@ export default function MapPage() {
   return (
     <div style={{ position: 'relative', height: '100%' }}>
       <KakaoMap
-        center={DEMO_CENTER}
-        level={6} // 시연 지역(약 5.9km x 2.6km)이 처음부터 한눈에 보이도록 축소
+        center={initialFocus ?? DEMO_CENTER}
+        // 넘겨받은 위치가 있으면 골목 단위(3)로 확대, 아니면 시연 지역(약 5.9km x 2.6km)이 처음부터 한눈에 보이도록 축소
+        level={initialFocus ? 3 : 6}
         markers={allMarkers}
         paths={paths}
         onMapClick={handleMapClick}
@@ -687,7 +740,10 @@ export default function MapPage() {
       )}
 
       <PlaceSheet
+        key={selectedPlace ? `${selectedPlace.lat},${selectedPlace.lng}` : 'none'} // 장소가 바뀌면 이름 입력 상태 초기화
         place={selectedPlace}
+        favorite={selectedFavorite}
+        onAddFavorite={addFavorite}
         onClose={search.reset}
         onSetStart={() => setPlaceAs(setStart, 'place-start')}
         onSetEnd={() => setPlaceAs(setEnd, 'place-end')}

@@ -4,6 +4,7 @@ public record FavoriteCreateRequest(
         String deviceId,
         String label,
         double latitude,
-        double longitude
+        double longitude,
+        String address
 ) {
 }

@@ -25,7 +25,7 @@ public class FavoriteServiceImpl implements FavoriteService {
     @Transactional
     public FavoriteResponse create(FavoriteCreateRequest request) {
         Member owner = currentMemberService.resolve(request.deviceId());
-        Favorite favorite = new Favorite(owner, request.label(), request.latitude(), request.longitude());
+        Favorite favorite = new Favorite(owner, request.label(), request.latitude(), request.longitude(), request.address());
         return FavoriteResponse.from(favoriteRepository.save(favorite));
     }
 
