@@ -1,11 +1,16 @@
 import { useEffect, useId, useState } from 'react'
 import {
+  Bell,
   BookOpen,
   Camera,
   Footprints,
+  Image,
+  ListFilter,
+  LocateFixed,
   MapPin,
   Moon,
   MousePointerClick,
+  Navigation,
   RotateCcw,
   Route,
   Search,
@@ -15,7 +20,7 @@ import {
   X,
 } from 'lucide-react'
 import { useTutorial } from '../hooks/useTutorial'
-import { CompareScene, FavoritesScene, IntroScene, ReportScene, SearchScene } from './TutorialScenes'
+import { AlertScene, CompareScene, FavoritesScene, IntroScene, NearbyScene, ReportScene, SearchScene } from './TutorialScenes'
 
 // 처음 방문과 마이페이지 "사용가이드 다시 보기"가 같은 안내를 쓴다.
 // 한 단계 = 움짤(Scene) + 한 줄 요약(lead) + 짧은 항목(points). 긴 문단 대신 훑어볼 수 있게 짧게 유지한다.
@@ -35,9 +40,10 @@ const STEPS = [
     Scene: SearchScene,
     lead: '검색하거나 지도를 눌러 고르세요.',
     points: [
-      { Icon: Search, text: '검색창에 장소·주소 입력' },
+      { Icon: Search, text: '검색창에 장소·주소 입력 (아래쪽엔 가까운 곳)' },
       { Icon: MapPin, text: '카드에서 출발 / 도착 선택' },
-      { Icon: Footprints, text: '신구대 ↔ 단대오거리역 구간 지원' },
+      { Icon: Navigation, text: '도착만 고르면 현재 위치에서 출발' },
+      { Icon: Footprints, text: '가천대역 ~ 상대원동 구간 지원' },
     ],
   },
   {
@@ -61,11 +67,31 @@ const STEPS = [
     ],
   },
   {
+    title: '주변 제보 보기',
+    Scene: NearbyScene,
+    lead: '검색창 아래 "주변 제보" 버튼을 눌러요.',
+    points: [
+      { Icon: LocateFixed, text: '내 주변 1km 제보를 가까운 순으로' },
+      { Icon: ListFilter, text: '종류 버튼으로 골라 보기' },
+      { Icon: Image, text: '제보를 누르면 위치·사진 확인' },
+    ],
+  },
+  {
+    title: '새 제보 알림',
+    Scene: AlertScene,
+    lead: '누군가 제보하면 바로 알려 줘요.',
+    points: [
+      { Icon: Bell, text: '화면 위 팝업을 누르면 그 위치로' },
+      { Icon: Star, text: '즐겨찾기 근처 제보는 따로 강조' },
+      { Icon: MousePointerClick, text: '놓친 알림은 하단 알림 탭에서' },
+    ],
+  },
+  {
     title: '즐겨찾기 & 다시 보기',
     Scene: FavoritesScene,
     lead: '자주 가는 곳은 저장해 두세요.',
     points: [
-      { Icon: Star, text: '하단 즐겨찾기에 장소 저장' },
+      { Icon: Star, text: '장소 카드에서 즐겨찾기에 추가' },
       { Icon: UserRound, text: '로그인하면 다른 기기에서도 보기' },
       { Icon: RotateCcw, text: '마이페이지에서 가이드 다시 보기' },
     ],
