@@ -7,10 +7,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useTutorial } from '../hooks/useTutorial'
 import { useNotifications } from '../hooks/useNotifications'
 
-// 로그인 안 한(익명) 사용자는 신뢰도 점수를 서버에서 받을 수 없어 고정값으로 표시한다.
-const RELIABILITY_SCORE = 95
-
-// 마이페이지: 프로필, 제보 신뢰도 점수, 내 제보 내역. 하단 탭은 App 공통 BottomNav가 그린다.
+// 마이페이지: 프로필, 사용가이드 다시 보기, 내 제보 내역. 하단 탭은 App 공통 BottomNav가 그린다.
 export default function MyPage() {
   const navigate = useNavigate()
   const { member } = useAuth()
@@ -79,18 +76,17 @@ export default function MyPage() {
           <span className="min-w-0 flex-1 text-[15px] font-bold">사용가이드 다시 보기</span>
           <ChevronRight size={18} className="shrink-0 text-muted" aria-hidden />
         </button>
-        <ReliabilityScore score={member?.reliabilityScore ?? RELIABILITY_SCORE} />
 
-        <section className="flex flex-col gap-3">
+        <section className="mt-4 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <h2 className="m-0 text-[17px] font-bold text-white">내 제보 내역</h2>
             {!loading && !error && <span className="text-sm text-muted">{reports.length}건</span>}
           </div>
 
           {loading ? (
-            <p className="m-0 py-4 text-center text-sm text-muted">불러오는 중...</p>
+            <p className="m-0 py-12 text-center text-sm text-muted">불러오는 중...</p>
           ) : error ? (
-            <div className="flex flex-col items-center gap-3 py-4">
+            <div className="flex flex-col items-center gap-3 py-12">
               <p className="m-0 text-center text-sm text-muted">{error}</p>
               <button
                 type="button"
@@ -101,7 +97,7 @@ export default function MyPage() {
               </button>
             </div>
           ) : reports.length === 0 ? (
-            <p className="m-0 py-4 text-center text-sm text-muted">아직 등록한 제보가 없습니다.</p>
+            <p className="m-0 py-12 text-center text-sm text-muted">아직 등록한 제보가 없습니다.</p>
           ) : (
             <ul className="m-0 flex list-none flex-col gap-3 p-0">
               {reports.map((report) => (
@@ -175,41 +171,6 @@ function ProfileCard() {
           </button>
         )
       )}
-    </section>
-  )
-}
-
-function reliabilityGrade(score) {
-  if (score >= 90) return '매우 높음'
-  if (score >= 70) return '높음'
-  if (score >= 50) return '보통'
-  return '낮음'
-}
-
-function ReliabilityScore({ score }) {
-  return (
-    <section className="flex flex-col gap-2.5 rounded-2xl bg-card p-4">
-      <div className="flex items-center justify-between">
-        <h2 className="m-0 text-[15px] font-bold text-white">내 제보 신뢰도 점수</h2>
-        <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-xs font-bold text-accent">
-          {reliabilityGrade(score)}
-        </span>
-      </div>
-      <div className="flex items-baseline gap-1">
-        <span className="text-[40px] leading-tight font-extrabold text-accent">{score}</span>
-        <span className="text-[15px] text-muted">/ 100점</span>
-      </div>
-      <div
-        role="progressbar"
-        aria-valuenow={score}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label="제보 신뢰도"
-        className="h-2 overflow-hidden rounded-full bg-line"
-      >
-        <div className="h-full rounded-full bg-accent" style={{ width: `${score}%` }} />
-      </div>
-      <p className="m-0 text-xs text-muted">정확한 제보가 쌓일수록 신뢰도가 올라가요.</p>
     </section>
   )
 }
