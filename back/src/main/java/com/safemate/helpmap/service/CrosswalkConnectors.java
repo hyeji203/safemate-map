@@ -48,7 +48,8 @@ final class CrosswalkConnectors {
                 continue;
             }
             neighbors.computeIfAbsent(e.getFromNode().getId(), k -> new HashSet<>()).add(e.getToNode().getId());
-            if (RoadType.halfWidthMeters(e.getRoadType()) > 0) {
+            // 넓은 골목은 작은 길로 둔다. 큰 도로처럼 보면 골목이 촘촘한 곳에서 옆 골목으로 담장을 넘는 연결이 생겼다
+            if (RoadType.halfWidthMeters(e.getRoadType()) > 0 && !RoadType.WIDE_RESIDENTIAL.equals(e.getRoadType())) {
                 if (e.getFromNode().getId() < e.getToNode().getId()) {
                     roads.add(e); // 같은 도로가 양방향으로 두 번 있으므로 한 방향만 본다
                 }

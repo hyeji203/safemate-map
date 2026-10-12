@@ -9,12 +9,18 @@ import java.util.Set;
  */
 final class RoadType {
 
+    // OSM에는 골목(residential)이지만 직접 찍은 횡단보도가 놓여 있어 보도로 걷고 횡단보도로 건너는 길.
+    // tools/mark_wide_residential.py 가 graph-edges.csv에 표시한다 (예: 단대동 GS25 앞 산성대로437번길).
+    // 도보 비용·어두움은 골목과 같고, 길 폭(보도·횡단보도)만 큰 도로처럼 다룬다
+    static final String WIDE_RESIDENTIAL = "residential_wide";
+
     private static final Map<String, Double> FACTORS = Map.ofEntries(
             Map.entry("pedestrian", 0.9),
             Map.entry("footway", 0.95),
             Map.entry("path", 1.0),
             Map.entry("living_street", 1.0),
             Map.entry("residential", 1.0),
+            Map.entry(WIDE_RESIDENTIAL, 1.0),
             Map.entry("service", 1.1),
             Map.entry("unclassified", 1.1),
             Map.entry("track", 1.2),
@@ -46,7 +52,8 @@ final class RoadType {
             "tertiary", 4.5, // 2차로 도로(자혜로 등): 6m로는 카카오맵 보도보다 건물 쪽으로 밀려 보여서 줄임
             "primary_link", 4.5,
             "secondary_link", 4.5,
-            "tertiary_link", 4.5);
+            "tertiary_link", 4.5,
+            WIDE_RESIDENTIAL, 3.5);
 
     private RoadType() {
     }
@@ -54,6 +61,11 @@ final class RoadType {
     /** 보도로 걷고 횡단보도로 건너야 하는 큰 도로면 중심선~보도 거리(m), 아니면 0 */
     static double halfWidthMeters(String roadType) {
         return roadType == null ? 0 : HALF_WIDTHS.getOrDefault(roadType, 0.0);
+    }
+
+    /** 상행·하행 차로가 따로 그려질 수 있는 큰 도로인지 (중앙분리대 판정용). 넓은 골목은 차로가 하나라 아니다 */
+    static boolean mayBeDivided(String roadType) {
+        return halfWidthMeters(roadType) > 0 && !roadType.endsWith("_link") && !WIDE_RESIDENTIAL.equals(roadType);
     }
 
     static double walkingFactor(String roadType) {

@@ -604,7 +604,9 @@ final class SidewalkPlanner {
             return cached;
         }
         int result = NO_MEDIAN;
-        if (RoadType.halfWidthMeters(edge.getRoadType()) > 0) {
+        // 넓은 골목은 차로가 하나라 중앙분리대가 없다 (옆 블록의 나란한 길을 맞은편 차로로 잘못 볼 수 있어서 뺀다)
+        if (RoadType.halfWidthMeters(edge.getRoadType()) > 0
+                && !RoadType.WIDE_RESIDENTIAL.equals(edge.getRoadType())) {
             List<double[]> line = toXYLine(edge);
             double[] mid = pointAlong(line, length(line) / 2); // {x, y, 진행방향 x, 진행방향 y}
             boolean left = false;
@@ -637,7 +639,7 @@ final class SidewalkPlanner {
     }
 
     private static boolean isMainRoad(Edge edge) {
-        return RoadType.halfWidthMeters(edge.getRoadType()) > 0 && !edge.getRoadType().endsWith("_link");
+        return RoadType.mayBeDivided(edge.getRoadType());
     }
 
     private List<MainRoad> mainRoads() {

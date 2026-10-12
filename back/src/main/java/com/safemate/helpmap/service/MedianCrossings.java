@@ -52,9 +52,8 @@ final class MedianCrossings {
         for (Edge e : edges) {
             neighbors.computeIfAbsent(e.getFromNode().getId(), k -> new HashSet<>()).add(e.getToNode().getId());
             // 같은 도로가 양방향으로 두 번 있으므로 한 방향만 본다. 교차로 안 연결 차로(_link)는 본 도로와 겹쳐 있어서
-            // 차로 한 쌍으로 잘못 잡히므로 뺀다 (예: 단대오거리 횡단보도가 광명로와 연결 차로 사이로 잡힘)
-            if (RoadType.halfWidthMeters(e.getRoadType()) > 0 && !e.getRoadType().endsWith("_link")
-                    && e.getFromNode().getId() < e.getToNode().getId()) {
+            // 차로 한 쌍으로 잘못 잡히므로 뺀다 (예: 단대오거리 횡단보도가 광명로와 연결 차로 사이로 잡힘). 넓은 골목도 차로가 하나라 뺀다
+            if (RoadType.mayBeDivided(e.getRoadType()) && e.getFromNode().getId() < e.getToNode().getId()) {
                 roads.add(e);
             }
         }

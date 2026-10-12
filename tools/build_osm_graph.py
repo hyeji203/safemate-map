@@ -6,6 +6,7 @@ OpenStreetMap 도로망에서 시연 지역의 보행 그래프(교차로 노드
   edges 컬럼: fromIndex,toIndex,distanceMeters,roadType(OSM highway 값),geometry("위도 경도;위도 경도;..." from->to 도로 모양)
 - 사용법:  python tools/build_osm_graph.py            # OSM에서 새로 받아 생성
            python tools/build_osm_graph.py --xml f.xml # 이미 받아 둔 OSM XML 사용
+  만든 뒤에는 python tools/mark_wide_residential.py 를 이어서 돌린다 (횡단보도가 있는 골목 표시)
 
 노드 = 도로가 만나는 교차로 + 도로 끝점. 간선 = 인접한 노드 사이 도로 구간(실제 도로를 따라 잰 길이).
 서버는 실행 중에 OSM에 접속하지 않고, 이 스크립트가 만든 CSV만 읽는다.
