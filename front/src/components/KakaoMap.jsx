@@ -32,8 +32,10 @@ function loadKakaoMapSdk() {
  * - paths: [{ id, points: [{ lat, lng }], color, weight?, style?, opacity? }] 경로 폴리라인 목록 (뒤쪽 항목이 위에 그려짐)
  *   style: 카카오맵 선 모양(strokeStyle). 기본 'solid'
  * - onMapClick: 마커가 아닌 빈 지도 영역을 클릭했을 때 좌표 콜백 (장소 이름 보기, 제보 위치 선택)
+ * - onCenterChange: 지도 이동·확대가 끝날 때마다 지도 가운데 좌표 { lat, lng } 콜백 (처음 생성될 때도 한 번 호출)
  * - crosshair: true면 커서를 십자 모양으로 바꾼다 (제보 위치 선택 중 표시용)
- * - focus: { lat, lng, level? } 이 값이 바뀔 때마다 지도를 그 위치로 이동한다 (검색한 장소 보여주기용)
+ * - focus: { lat, lng, level?, offsetY? } 이 값이 바뀔 때마다 지도를 그 위치로 이동한다 (검색한 장소 보여주기용)
+ *   offsetY(px)를 주면 그 위치를 가운데보다 그만큼 위에 둔다 (아래쪽 카드에 가리지 않게)
  * - myLocation: { lat, lng } | null. 있으면 파란 핀 모양으로 현재 위치를 표시 (null이면 표시 안 함)
  * - heading: 기기가 바라보는 방향(도, 정북 기준 시계방향) | null. 있으면 파란 점에 방향 부채꼴을 얹는다.
  *   heading은 자주 바뀔 수 있어 마커를 다시 만들지 않고 회전만 직접 갱신한다 (myLocation과 분리한 이유).
@@ -45,6 +47,7 @@ export default function KakaoMap({
   markers = [],
   paths = [],
   onMapClick,
+  onCenterChange,
   crosshair = false,
   focus,
   myLocation,
@@ -235,11 +238,18 @@ export default function KakaoMap({
   }, [mapReady, paths])
 
   // focus가 바뀌면 그 위치로 부드럽게 이동 (레벨을 먼저 맞춘 뒤 panTo)
+  // offsetY를 주면 그 위치가 가운데보다 offsetY(px)만큼 위에 오게 옮긴다 (아래쪽 카드에 가리지 않게)
   useEffect(() => {
     if (!mapReady || !focus) return
     const map = mapRef.current
     if (focus.level != null) map.setLevel(focus.level)
-    map.panTo(new window.kakao.maps.LatLng(focus.lat, focus.lng))
+    let target = new window.kakao.maps.LatLng(focus.lat, focus.lng)
+    if (focus.offsetY) {
+      const projection = map.getProjection()
+      const point = projection.containerPointFromCoords(target)
+      target = projection.coordsFromContainerPoint(new window.kakao.maps.Point(point.x, point.y + focus.offsetY))
+    }
+    map.panTo(target)
   }, [mapReady, focus])
 
   // 현재 위치: 파란 점 + 주변 블러(halo) + 바라보는 방향 부채꼴로 표시.
@@ -301,6 +311,19 @@ export default function KakaoMap({
       myLocationOverlayRef.current?.setMap(null)
     }
   }, [])
+
+  // 지도 이동·확대가 끝날 때마다(idle) 지금 지도 가운데 좌표를 전달한다 (현재 위치가 없을 때 "주변 제보"의 기준점)
+  useEffect(() => {
+    if (!mapReady || !onCenterChange) return
+    const map = mapRef.current
+    const handleIdle = () => {
+      const c = map.getCenter()
+      onCenterChange({ lat: c.getLat(), lng: c.getLng() })
+    }
+    handleIdle()
+    window.kakao.maps.event.addListener(map, 'idle', handleIdle)
+    return () => window.kakao.maps.event.removeListener(map, 'idle', handleIdle)
+  }, [mapReady, onCenterChange])
 
   // 지도 빈 공간 클릭 시 좌표 전달 (마커 클릭은 각 마커 자체의 onClick이 처리하므로 서로 안 겹침)
   useEffect(() => {

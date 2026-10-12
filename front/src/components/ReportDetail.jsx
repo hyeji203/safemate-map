@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { colors } from '../styles/colors'
+import { REPORT_PHOTO_STYLE } from '../styles/reportPhoto'
 import { categoryLabel } from '../constants/reportCategories'
 import { reportApi } from '../api/reportApi'
 import { useNotifications } from '../hooks/useNotifications'
@@ -8,8 +9,10 @@ import { useNotifications } from '../hooks/useNotifications'
  * 제보 마커 클릭 시 뜨는 상세 정보. 같은 위치에 여러 건이 쌓여있으면 전부 목록으로 보여준다
  * (마커가 좌표 하나에 완전히 겹치기 때문에, 최신 것만 보이지 않도록 여기서 다 모아 보여줌).
  * 삭제는 본인이 등록한 제보만 가능 (서버에서 deviceId로 확인).
+ * - overMap: true면 지도를 어둡게 덮지 않고 아래쪽 카드로만 띄운다 (주변 제보 목록에서 골랐을 때 지도 위치도 같이 보이게)
+ * - closeLabel: 닫기 버튼 글자 (주변 제보에서 열었을 때는 "주변 제보 목록으로")
  */
-export default function ReportDetail({ reports, onClose, onDeleted, onAddReport }) {
+export default function ReportDetail({ reports, onClose, onDeleted, onAddReport, overMap = false, closeLabel = '닫기' }) {
   const [deletingId, setDeletingId] = useState(null)
   const [error, setError] = useState(null)
   const { markMineDeleted } = useNotifications()
@@ -43,22 +46,26 @@ export default function ReportDetail({ reports, onClose, onDeleted, onAddReport 
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0,0,0,0.4)',
+        background: overMap ? 'transparent' : 'rgba(0,0,0,0.4)',
+        pointerEvents: overMap ? 'none' : 'auto', // 지도 위 카드일 때는 카드 밖 지도를 그대로 움직일 수 있게
         display: 'flex',
         alignItems: 'flex-end',
         justifyContent: 'center',
         zIndex: 1000,
       }}
-      onClick={onClose}
+      onClick={overMap ? undefined : onClose}
     >
       <div
+        className={overMap ? 'sheet-up' : undefined}
         style={{
+          pointerEvents: 'auto',
           background: colors.white,
           borderRadius: '16px 16px 0 0',
+          boxShadow: overMap ? '0 -2px 12px rgba(0,0,0,0.2)' : undefined,
           padding: 20,
           width: '100%',
           maxWidth: 480,
-          maxHeight: '75vh',
+          maxHeight: overMap ? '58vh' : '75vh', // 지도 위 카드일 때는 위쪽에 제보 위치가 보이도록 낮게
           boxSizing: 'border-box',
           display: 'flex',
           flexDirection: 'column',
@@ -115,7 +122,12 @@ export default function ReportDetail({ reports, onClose, onDeleted, onAddReport 
                 <img
                   src={report.imageUrl}
                   alt="제보 사진"
-                  style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 8, marginBottom: 8 }}
+                  // 지도 위 카드일 때는 사진을 자르지 않고 전체가 보이게 한다 (주변 제보 목록의 사진과 같은 크기)
+                  style={
+                    overMap
+                      ? { ...REPORT_PHOTO_STYLE, marginBottom: 8 }
+                      : { width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 8, marginBottom: 8 }
+                  }
                 />
               )}
 
@@ -151,7 +163,7 @@ export default function ReportDetail({ reports, onClose, onDeleted, onAddReport 
             background: colors.white,
           }}
         >
-          닫기
+          {closeLabel}
         </button>
       </div>
     </div>

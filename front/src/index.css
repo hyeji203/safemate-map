@@ -28,3 +28,23 @@ body {
 #root {
   min-height: 100svh;
 }
+
+/* 아래에서 올라오는 시트(주변 제보 목록, 지도 위 제보 카드) 등장 애니메이션 */
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.sheet-up {
+  animation: sheet-up 0.25s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-up {
+    animation: none;
+  }
+}
