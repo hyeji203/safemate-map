@@ -26,6 +26,7 @@ function loadKakaoMapSdk() {
  *   subtle: 얇은 테두리+반투명+그림자 없음. glow: 점 주변에 같은 색 빛 번짐 (가로등용). maxLevel: 지도 줌 레벨(작을수록 확대)이 이 값 이하일 때만 표시.
  *   badge: 오른쪽 위에 작은 숫자 표시 (같은 위치에 여러 건 묶였을 때 개수 표시용).
  *   pin: true면 물방울 모양 핀으로 그림 (선택한 장소 표시용). label을 주면 핀 아래에 이름표를 붙인다.
+ *   star: true면 노란 원 + 흰 별로 그림 (즐겨찾기 표시용). label을 주면 아래에 이름표를 붙인다.
  *   crosswalk: true면 횡단보도 줄무늬 배지(흰 원)로 그린다 (경로에서 건너기 시작하는 곳 표시용).
  *   제보 마커는 color를 위험색(red)으로, 경로 노드는 선택 상태에 따른 색으로 넘기는 식으로 호출부에서 합쳐서 사용한다.
  * - paths: [{ id, points: [{ lat, lng }], color, weight?, style?, opacity? }] 경로 폴리라인 목록 (뒤쪽 항목이 위에 그려짐)
@@ -119,6 +120,35 @@ export default function KakaoMap({
             yAnchor: 1, // 핀 끝이 좌표에 오도록 아래쪽 기준
             xAnchor: 0.5,
             zIndex: 10, // 다른 마커보다 위
+          })
+        }
+
+        if (m.star) {
+          // 즐겨찾기: 노란 원 + 흰 별 (네이버지도 저장 장소처럼). label을 주면 아래에 이름표를 붙인다
+          el.style.cssText =
+            'position:relative;width:24px;height:24px;border-radius:50%;background:#FFB020;border:2px solid #fff;' +
+            'box-sizing:border-box;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.4);' +
+            `cursor:${m.onClick ? 'pointer' : 'default'}`
+          el.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2.5l2.9 6.2 6.6.7-5 4.5 1.4 6.6L12 17.2l-5.9 3.3 1.4-6.6-5-4.5 6.6-.7z" fill="#fff"/></svg>`
+          if (m.label) {
+            const label = document.createElement('div')
+            label.textContent = m.label
+            label.style.cssText =
+              'position:absolute;top:24px;left:50%;transform:translateX(-50%);white-space:nowrap;' +
+              'font-size:12px;font-weight:700;color:#1A2B4C;' +
+              'text-shadow:-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,1px 1px 0 #fff,0 0 3px #fff'
+            el.appendChild(label)
+          }
+          if (m.onClick) el.addEventListener('click', () => m.onClick(m))
+          return new kakao.maps.CustomOverlay({
+            map: mapRef.current,
+            position: new kakao.maps.LatLng(m.lat, m.lng),
+            content: el,
+            clickable: !!m.onClick,
+            yAnchor: 0.5,
+            xAnchor: 0.5,
+            zIndex: 7, // 제보·횡단보도보다 위, 출발/도착·선택 핀보다 아래
           })
         }
 

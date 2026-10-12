@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { colors } from '../styles/colors'
+import { routeHistoryKey } from '../hooks/useRouteHistory'
 
 /**
  * 지도 상단 장소 검색창. 입력하면 아래로 검색 결과 목록이 펼쳐지고, 하나를 고르면 search.selected가 채워진다.
@@ -70,7 +71,7 @@ function RouteHistory({ history }) {
         </button>
       </div>
       {items.map((item) => (
-        <div key={`${item.start.lat},${item.start.lng}|${item.end.lat},${item.end.lng}`} style={historyRowStyle}>
+        <div key={routeHistoryKey(item)} style={historyRowStyle}>
           <button type="button" onClick={() => onPick(item)} style={historyItemStyle}>
             <span style={{ ...dotStyle, background: colors.navy }} />
             <span style={ellipsisStyle}>{item.start.title ?? '출발지'}</span>
