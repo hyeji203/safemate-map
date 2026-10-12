@@ -10,6 +10,8 @@ import { useRouteHistory } from '../hooks/useRouteHistory'
 import { useNotifications } from '../hooks/useNotifications'
 import ReportModal from '../components/ReportModal'
 import ReportDetail from '../components/ReportDetail'
+import NearbyReportsSheet from '../components/NearbyReportsSheet'
+import { haversineMeters } from '../utils/geo'
 import { reportApi } from '../api/reportApi'
 import { favoriteApi } from '../api/favoriteApi'
 import { colors } from '../styles/colors'
@@ -17,6 +19,11 @@ import { categoryLabel, categoryIcon } from '../constants/reportCategories'
 
 // 시연 지역(가천대역~상대원동) 중심 (tools/build_osm_graph.py의 BBOX 가운데)
 const DEMO_CENTER = { lat: 37.4465, lng: 127.1565 }
+
+// "주변 제보" 버튼·목록에 넣는 반경(m). 현재 위치(없으면 지도 가운데)에서 이 거리 안의 제보만 센다
+const NEARBY_REPORT_RADIUS_METERS = 1000
+const NEARBY_REPORT_RADIUS_LABEL =
+  NEARBY_REPORT_RADIUS_METERS >= 1000 ? `${NEARBY_REPORT_RADIUS_METERS / 1000}km` : `${NEARBY_REPORT_RADIUS_METERS}m`
 
 // 가로등은 이 줌 레벨 이하(= 확대했을 때)에서만 표시 (카카오맵은 숫자가 작을수록 확대)
 // 장소 검색 후 이동하는 레벨(2)에서도 보이도록 2으로 맞춘다
@@ -115,6 +122,9 @@ export default function MapPage() {
   const [reportMode, setReportMode] = useState(false)
   const [pendingLocation, setPendingLocation] = useState(null)
   const [selectedReportGroup, setSelectedReportGroup] = useState(null) // 같은 좌표에 쌓인 제보 전체 (배열)
+  const [nearbyOpen, setNearbyOpen] = useState(false) // "주변 제보" 시트
+  const [detailFromNearby, setDetailFromNearby] = useState(false) // 지금 열린 제보 상세가 주변 제보 목록에서 고른 것인지
+  const [mapCenter, setMapCenter] = useState(() => initialFocus ?? DEMO_CENTER) // 현재 위치가 없을 때 주변 제보 기준점
 
   // 현재 위치는 화면 진입 시부터 계속 추적해서 항상 파란 점 + 바라보는 방향으로 표시한다.
   // (안드로이드 전용이라 iOS의 별도 방향 센서 권한 처리는 필요 없음)
@@ -379,11 +389,80 @@ export default function MapPage() {
           size: 22,
           icon: categoryIcon(latest.category),
           badge: group.length > 1 ? group.length : undefined,
-          onClick: () => setSelectedReportGroup(group),
+          onClick: () => {
+            setDetailFromNearby(false)
+            setSelectedReportGroup(group)
+          },
         }
       }),
     [reportGroups],
   )
+
+  // 주변 제보: 현재 위치(없으면 지금 보고 있는 지도 가운데)에서 반경 안의 제보를 가까운 순으로.
+  // 현재 위치는 여기서 거리 계산에만 쓰고 어디에도 저장·전송하지 않는다 (팀 원칙)
+  const nearbyBasis = myLocation ?? mapCenter
+  const nearbyReports = useMemo(
+    () =>
+      reports
+        .map((r) => ({ ...r, distance: haversineMeters(nearbyBasis.lat, nearbyBasis.lng, r.latitude, r.longitude) }))
+        .filter((r) => r.distance <= NEARBY_REPORT_RADIUS_METERS)
+        .sort((a, b) => a.distance - b.distance),
+    [reports, nearbyBasis.lat, nearbyBasis.lng],
+  )
+
+  const bottomSheetOpen = !!selectedPlace || nearbyOpen
+
+  useEffect(() => {
+    if (selectedPlace) setNearbyOpen(false)
+  }, [selectedPlace])
+
+  // 버튼이 "눌린" 상태: 목록이 떠 있거나, 목록에서 고른 제보 카드가 떠 있을 때
+  const nearbyActive = nearbyOpen || detailFromNearby
+
+  const closeNearby = () => {
+    setNearbyOpen(false)
+    if (detailFromNearby) {
+      setSelectedReportGroup(null)
+      setDetailFromNearby(false)
+    }
+  }
+
+  const openNearbyReports = () => {
+    search.reset() // 장소 정보 카드와 같은 자리에 뜨므로 하나만 보이게 한다
+    setNearbyOpen(true)
+  }
+
+  // 목록에서 제보를 누르면 목록은 내려가고, 지도를 그 위치로 옮겨 핀을 꽂은 뒤 아래쪽 카드로 내용·사진을 보여준다.
+  // 카드가 화면 아래쪽을 차지하므로 제보 위치는 화면 위쪽에 오게 옮긴다. 카드를 닫으면 목록으로 돌아간다
+  const showNearbyReport = (report) => {
+    setNearbyOpen(false)
+    setLocationFocus({ lat: report.latitude, lng: report.longitude, level: 3, offsetY: Math.round(window.innerHeight * 0.27) })
+    setSelectedReportGroup(reportGroups.find((g) => g.some((r) => r.id === report.id)) ?? [report])
+    setDetailFromNearby(true)
+  }
+
+  const closeReportDetail = () => {
+    setSelectedReportGroup(null)
+    if (detailFromNearby) setNearbyOpen(true)
+    setDetailFromNearby(false)
+  }
+
+  // 주변 제보에서 고른 제보 위치에 빨간 핀 + 카테고리 이름표 (상세 카드가 떠 있는 동안만)
+  const nearbyFocusMarkers = useMemo(() => {
+    const target = detailFromNearby && selectedReportGroup?.[0]
+    if (!target) return []
+    return [
+      {
+        id: 'nearby-selected-report',
+        lat: target.latitude,
+        lng: target.longitude,
+        title: categoryLabel(target.category),
+        label: categoryLabel(target.category),
+        color: colors.red,
+        pin: true,
+      },
+    ]
+  }, [detailFromNearby, selectedReportGroup])
 
   // 좌표 찍기 모드 전용: 직접 찍은 횡단보도. 숫자 = CSV 줄 번호, 보라 = 일반, 분홍 = 대각선
   const surveyedCrosswalkMarkers = useMemo(
@@ -427,8 +506,17 @@ export default function MapPage() {
       ...crossingMarkers,
       ...favoriteMarkers,
       ...searchedPointMarkers,
+      ...nearbyFocusMarkers,
     ],
-    [streetLightMarkers, surveyedCrosswalkMarkers, reportMarkers, crossingMarkers, favoriteMarkers, searchedPointMarkers],
+    [
+      streetLightMarkers,
+      surveyedCrosswalkMarkers,
+      reportMarkers,
+      crossingMarkers,
+      favoriteMarkers,
+      searchedPointMarkers,
+      nearbyFocusMarkers,
+    ],
   )
 
   // 고른 경로는 굵고 진하게 맨 위에, 다른 경로는 가늘고 흐리게 아래에 깔아 비교만 할 수 있게 한다
@@ -498,6 +586,7 @@ export default function MapPage() {
       return
     }
     setEditingPoint(null) // 출발/도착 변경 중에 지도를 누르면 변경은 그만두고 누른 장소를 보여준다
+    setNearbyOpen(false) // 누른 장소의 정보 카드가 같은 자리에 뜬다
     try {
       const { data } = await placeApi.findAt(latlng.lat, latlng.lng)
       if (seq !== mapClickSeqRef.current || !data) return
@@ -523,6 +612,7 @@ export default function MapPage() {
         markers={allMarkers}
         paths={paths}
         onMapClick={handleMapClick}
+        onCenterChange={setMapCenter}
         crosshair={reportMode}
         focus={focus}
         myLocation={myLocation}
@@ -656,7 +746,7 @@ export default function MapPage() {
         </div>
       )}
 
-      {visibleRoutes && !error && !selectedPlace ? (
+      {visibleRoutes && !error && !bottomSheetOpen ? (
         // 경로가 나오면 아래에 안심경로·최단경로 카드를 따로따로 띄운다 (테두리 색 = 지도 위 경로선 색).
         // 카드를 누르면 그 경로를 골라 지도에 강조한다
         <div
@@ -694,7 +784,7 @@ export default function MapPage() {
             bottom: 16,
             left: 12,
             right: 84,
-            display: selectedPlace ? 'none' : 'flex', // 장소 정보 카드가 떠 있을 때는 카드에 자리를 내준다
+            display: bottomSheetOpen ? 'none' : 'flex', // 장소 정보 카드·주변 제보가 떠 있을 때는 자리를 내준다
             alignItems: 'flex-start',
             gap: 8,
             background: colors.white,
@@ -722,6 +812,57 @@ export default function MapPage() {
             </button>
           )}
         </div>
+      )}
+
+      {/* 주변 제보 버튼. 검색창 바로 아래 왼쪽 (오른쪽 즐겨찾기 별 버튼과 같은 줄, 검색 결과 목록이 펼쳐지면 그 아래로 가려진다).
+          제보 모드에서는 같은 자리에 안내 띠가 뜨므로 숨긴다 */}
+      {!reportMode && (
+        <button
+          type="button"
+          onClick={nearbyActive ? closeNearby : openNearbyReports}
+          aria-pressed={nearbyActive}
+          style={{
+            position: 'absolute',
+            zIndex: 9,
+            top: 72,
+            left: 12,
+            height: 40,
+            padding: '0 14px',
+            borderRadius: 20,
+            // 평소에는 즐겨찾기·현재 위치·제보 버튼과 같은 남색. 눌린 상태(목록이나 거기서 고른 제보가 떠 있음)는
+            // 흰 바탕 + 남색 글씨·테두리로 반전해 한눈에 구분되게 한다
+            border: `2px solid ${nearbyActive ? colors.navy : 'transparent'}`,
+            background: nearbyActive ? colors.white : colors.navy,
+            color: nearbyActive ? colors.navy : colors.white,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            fontSize: 14,
+            fontWeight: 700,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+            cursor: 'pointer',
+          }}
+        >
+          주변 제보
+          <span
+            style={{
+              minWidth: 22,
+              height: 22,
+              padding: '0 6px',
+              borderRadius: 11,
+              // 개수 배지: 제보가 있으면 빨간 바탕(위험색), 없으면 흐리게
+              background: nearbyReports.length > 0 ? colors.red : `${colors.white}33`,
+              color: colors.white,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 12,
+              boxSizing: 'border-box',
+            }}
+          >
+            {nearbyReports.length}
+          </span>
+        </button>
       )}
 
       {/* 즐겨찾기 별 표시/숨기기. 검색창 바로 아래 오른쪽 (검색 결과 목록이 펼쳐지면 그 아래로 가려진다).
@@ -762,8 +903,8 @@ export default function MapPage() {
         </button>
       )}
 
-      {/* 장소 정보 카드가 떠 있을 때는 카드에 자리를 내준다 */}
-      {!selectedPlace && (
+      {/* 장소 정보 카드·주변 제보가 떠 있을 때는 자리를 내준다 */}
+      {!bottomSheetOpen && (
         <button
           type="button"
           onClick={handleLocateMe}
@@ -800,8 +941,8 @@ export default function MapPage() {
         </button>
       )}
 
-      {/* 장소 정보 카드가 떠 있을 때는 카드에 자리를 내준다 */}
-      {!selectedPlace && (
+      {/* 장소 정보 카드·주변 제보가 떠 있을 때는 자리를 내준다 */}
+      {!bottomSheetOpen && (
         <button
           type="button"
           onClick={() => setReportMode((v) => !v)}
@@ -853,6 +994,15 @@ export default function MapPage() {
         onSetEnd={() => setPlaceAs(setEnd, 'place-end')}
       />
 
+      {nearbyOpen && (
+        <NearbyReportsSheet
+          reports={nearbyReports}
+          basisLabel={`${myLocation ? '현재 위치' : '지도 가운데'} 기준 ${NEARBY_REPORT_RADIUS_LABEL}`}
+          onClose={() => setNearbyOpen(false)}
+          onSelect={showNearbyReport}
+        />
+      )}
+
       <ReportModal
         location={pendingLocation}
         onClose={() => setPendingLocation(null)}
@@ -861,17 +1011,18 @@ export default function MapPage() {
 
       <ReportDetail
         reports={selectedReportGroup}
-        onClose={() => setSelectedReportGroup(null)}
+        overMap={detailFromNearby}
+        closeLabel={detailFromNearby ? '주변 제보 목록으로' : '닫기'}
+        onClose={closeReportDetail}
         onDeleted={(deletedId) => {
-          setSelectedReportGroup((prev) => {
-            if (!prev) return prev
-            const remaining = prev.filter((r) => r.id !== deletedId)
-            return remaining.length > 0 ? remaining : null
-          })
+          const remaining = selectedReportGroup?.filter((r) => r.id !== deletedId) ?? []
+          if (remaining.length > 0) setSelectedReportGroup(remaining)
+          else closeReportDetail() // 이 위치 제보를 다 지우면 카드를 닫는다 (주변 제보에서 왔으면 목록으로)
           loadReports()
         }}
         onAddReport={(location) => {
           setSelectedReportGroup(null)
+          setDetailFromNearby(false)
           setPendingLocation(location)
         }}
       />
