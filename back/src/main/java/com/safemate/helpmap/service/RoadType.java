@@ -13,6 +13,10 @@ final class RoadType {
     // tools/mark_wide_residential.py 가 graph-edges.csv에 표시한다 (예: 단대동 GS25 앞 산성대로437번길).
     // 도보 비용·어두움은 골목과 같고, 길 폭(보도·횡단보도)만 큰 도로처럼 다룬다
     static final String WIDE_RESIDENTIAL = "residential_wide";
+    // OSM에는 tertiary(2차로 기준)지만 실제로는 4차로라 보도가 중심선에서 훨씬 떨어진 길. 도보 비용·어두움은 tertiary와 같고
+    // 길 폭만 secondary처럼 다룬다. tools/mark_wide_residential.py 가 표시한다 (예: 단대오거리 동쪽 산성대로372번길:
+    // 4.5m로 두었더니 카카오맵 북쪽 보도보다 약 7m 차도 쪽으로 그려졌음)
+    static final String WIDE_TERTIARY = "tertiary_wide";
 
     private static final Map<String, Double> FACTORS = Map.ofEntries(
             Map.entry("pedestrian", 0.9),
@@ -30,6 +34,7 @@ final class RoadType {
             // (tertiary를 1.2로 두었더니 secondary보다 불리해져서, 광명로 갈림길에서 단대오거리로 곧장 가는 tertiary 대신
             //  20m 더 먼 secondary로 돌아가며 횡단보도 없는 곳에서 건너는 경로가 나왔음)
             Map.entry("tertiary", 1.0),
+            Map.entry(WIDE_TERTIARY, 1.0),
             Map.entry("tertiary_link", 1.0),
             Map.entry("secondary", 1.0),
             Map.entry("secondary_link", 1.0),
@@ -42,13 +47,14 @@ final class RoadType {
     // (확인 결과 데이터상 어두움 비율이 primary 95%, secondary 82%, tertiary 59%로 실제와 반대로 나왔음)
     private static final Set<String> LIT_ARTERIALS = Set.of(
             "trunk", "trunk_link", "primary", "primary_link",
-            "secondary", "secondary_link", "tertiary", "tertiary_link");
+            "secondary", "secondary_link", "tertiary", "tertiary_link", WIDE_TERTIARY);
 
     // 건널 때 횡단보도를 표시하는 큰 도로의 중심선~보도 거리(m, 대략값). 여기 없는 골목은 그냥 지나간다.
     // _link는 큰 교차로 안의 연결 차로(예: 단대오거리 가운데)라서, 그냥 지나가게 두면 교차로 한가운데를 가로질러 걷는 경로가 나온다
     private static final Map<String, Double> HALF_WIDTHS = Map.of(
             "primary", 12.0,
             "secondary", 9.0,
+            WIDE_TERTIARY, 9.0,
             "tertiary", 4.5, // 2차로 도로(자혜로 등): 6m로는 카카오맵 보도보다 건물 쪽으로 밀려 보여서 줄임
             "primary_link", 4.5,
             "secondary_link", 4.5,
