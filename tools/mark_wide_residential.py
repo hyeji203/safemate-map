@@ -7,6 +7,8 @@
 - 사용법:  python tools/mark_wide_residential.py
   build_osm_graph.py로 도로망을 새로 만들었거나 crosswalks-surveyed.csv에 좌표를 추가했으면 다시 돌린다.
   지금 residential_wide인 간선도 residential로 보고 처음부터 다시 판정하므로 여러 번 돌려도 결과가 같다.
+- 함께 하는 일: WIDE_TERTIARY_EDGES에 적은 간선을 tertiary_wide로 바꾼다. OSM에는 tertiary(2차로 기준)지만 실제로는
+  4차로라 보도가 중심선에서 훨씬 떨어진 길이다 (RoadType.WIDE_TERTIARY). 도로망을 새로 만들면 노드 번호가 바뀌므로 다시 확인한다.
 """
 import csv
 import math
@@ -14,6 +16,10 @@ from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "back" / "src" / "main" / "resources" / "data"
 WIDE = "residential_wide"
+WIDE_TERTIARY = "tertiary_wide"
+
+# (fromIndex, toIndex) 단대오거리(648) 동쪽 산성대로372번길 ~ 노드 688. 카카오맵에서 4차로로 보이는 구간
+WIDE_TERTIARY_EDGES = {("648", "746"), ("740", "746"), ("688", "740")}
 
 # 횡단보도 좌표가 간선 중심선에서 이 거리 안이고, 모든 간선 중 그 간선이 가장 가까울 때 그 간선 위의 횡단보도로 본다
 MATCH_METERS = 6
@@ -40,6 +46,10 @@ def main():
     for cols in rows:
         if cols[3] == WIDE:
             cols[3] = "residential"
+        elif cols[3] == WIDE_TERTIARY:
+            cols[3] = "tertiary"
+        if (cols[0], cols[1]) in WIDE_TERTIARY_EDGES and cols[3] == "tertiary":
+            cols[3] = WIDE_TERTIARY
     shapes = [[to_xy(*map(float, p.split())) for p in cols[4].split(";")] for cols in rows]
 
     marked = set()
@@ -61,7 +71,8 @@ def main():
         f.write(header + "\n")
         for cols in rows:
             f.write(",".join(cols) + "\n")
-    print(f"residential_wide로 표시한 간선 {len(marked)}개")
+    print(f"residential_wide로 표시한 간선 {len(marked)}개, "
+          f"tertiary_wide {sum(cols[3] == WIDE_TERTIARY for cols in rows)}개")
 
 
 if __name__ == "__main__":

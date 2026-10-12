@@ -55,9 +55,14 @@ final class SidewalkPlanner {
     // 따로 센다 (25m로 두었을 때 단대오거리 동쪽 광명로·남동쪽 산성대로 횡단보도가 대각선 하나로 합쳐졌다)
     private static final double MERGE_GAP_METERS = 12;
     private static final double MERGE_DIRECTION_COS = Math.cos(Math.toRadians(50));
+    // 신호등 없는 이 길이 이하의 횡단이 다른 횡단 바로 앞뒤(MERGE_GAP_METERS)에 붙어 있으면 따로 표시하지 않는다
+    private static final double TINY_CROSSING_METERS = 12;
     // 그리는 선에서 지울 뾰족한 점: 앞이나 뒤 점까지 이 거리 안이고, 갔던 방향으로 45도 안쪽으로 되돌아오는 점
     private static final double SPIKE_MAX_METERS = 15;
     private static final double SPIKE_TURN_COS = Math.cos(Math.toRadians(45));
+    // 경로가 이 거리 안으로 되돌아오고 그 사이에 걸은 길이가 LOOP_MAX_METERS 이하면 작은 고리로 보고 지운다
+    private static final double LOOP_GAP_METERS = 4;
+    private static final double LOOP_MAX_METERS = 30;
     // 탐색 상태의 특별한 모퉁이 구역 값: 출발 좌표가 따로 없어서 어느 모퉁이에서든 출발 가능 / 도착 완료
     private static final int ANY_SECTOR = -1;
     private static final int DONE = -2;
@@ -732,6 +737,7 @@ final class SidewalkPlanner {
             straightenCrossing(drawn, c);
         }
         removeSpikes(drawn, merged);
+        removeLoops(drawn, merged);
         List<RouteResponse.LatLng> geometry = new ArrayList<>();
         double[] last = null;
         for (double[] p : drawn) {
@@ -740,7 +746,8 @@ final class SidewalkPlanner {
                 last = p;
             }
         }
-        return new Result(geometry, merged);
+        // 선은 짧은 횡단까지 그대로 그리고, 화면에 표시하는 횡단에서만 뺀다
+        return new Result(geometry, dropTinyCrossings(merged));
     }
 
     /**
@@ -755,6 +762,41 @@ final class SidewalkPlanner {
         int to = from < 0 ? -1 : indexOf(points, end, from + 1);
         if (from >= 0 && to > from + 1) {
             points.subList(from + 1, to).clear();
+        }
+    }
+
+    /**
+     * 몇 m 안에서 제자리로 되돌아오는 작은 고리를 지운다. 큰 교차로의 연결 차로 모퉁이 점을 차례로 잇다 보면
+     * 횡단보도를 건넌 직후 삼각형으로 한 바퀴 도는 모양이 생긴다 (예: 단대오거리 남쪽 단대고개길 횡단보도 서쪽 끝, 약 7m).
+     * 뾰족한 점(removeSpikes)과 달리 꺾이는 각이 완만해서 따로 본다. 횡단보도 양 끝점은 지우지 않는다.
+     */
+    private void removeLoops(List<double[]> points, List<RouteResponse.Crossing> crossings) {
+        List<double[]> keep = new ArrayList<>();
+        for (RouteResponse.Crossing c : crossings) {
+            keep.add(toXY(c.start().latitude(), c.start().longitude()));
+            keep.add(toXY(c.end().latitude(), c.end().longitude()));
+        }
+        for (int i = 0; i + 2 < points.size(); i++) {
+            double walked = 0;
+            int loopEnd = -1;
+            for (int j = i + 1; j < points.size(); j++) {
+                double[] prev = points.get(j - 1);
+                double[] p = points.get(j);
+                walked += Math.hypot(p[0] - prev[0], p[1] - prev[1]);
+                if (walked > LOOP_MAX_METERS) {
+                    break;
+                }
+                if (j > i + 1 && indexOf(keep, prev, 0) >= 0) {
+                    break; // 횡단보도 끝점을 지나서까지 지우지 않는다
+                }
+                double[] a = points.get(i);
+                if (j > i + 1 && Math.hypot(p[0] - a[0], p[1] - a[1]) <= LOOP_GAP_METERS) {
+                    loopEnd = j;
+                }
+            }
+            if (loopEnd > 0) {
+                points.subList(i + 1, loopEnd).clear();
+            }
         }
     }
 
@@ -831,6 +873,39 @@ final class SidewalkPlanner {
             merged.add(c);
         }
         return merged;
+    }
+
+    /**
+     * 긴 횡단보도 끝에 바로 이어지는 신호등 없는 짧은 횡단은 뺀다. 방향이 달라 합쳐지지는 않지만, 걷는 사람에게는
+     * 긴 횡단보도의 일부처럼 보여서 따로 표시하면 어색하다 (예: 단대오거리 산성대로 횡단보도 서쪽 끝의 연결 차로).
+     * 경로선은 그대로 두고 횡단 표시·횟수에서만 뺀다
+     */
+    private List<RouteResponse.Crossing> dropTinyCrossings(List<RouteResponse.Crossing> crossings) {
+        List<RouteResponse.Crossing> result = new ArrayList<>();
+        for (int i = 0; i < crossings.size(); i++) {
+            RouteResponse.Crossing c = crossings.get(i);
+            boolean tiny = !c.hasSignal() && crossingLength(c) <= TINY_CROSSING_METERS;
+            boolean nextToLonger = (i > 0 && touches(crossings.get(i - 1).end(), c.start())
+                    && crossingLength(crossings.get(i - 1)) > crossingLength(c))
+                    || (i + 1 < crossings.size() && touches(c.end(), crossings.get(i + 1).start())
+                    && crossingLength(crossings.get(i + 1)) > crossingLength(c));
+            if (!(tiny && nextToLonger)) {
+                result.add(c);
+            }
+        }
+        return result;
+    }
+
+    private double crossingLength(RouteResponse.Crossing c) {
+        double[] a = toXY(c.start().latitude(), c.start().longitude());
+        double[] b = toXY(c.end().latitude(), c.end().longitude());
+        return Math.hypot(a[0] - b[0], a[1] - b[1]);
+    }
+
+    private boolean touches(RouteResponse.LatLng p, RouteResponse.LatLng q) {
+        double[] a = toXY(p.latitude(), p.longitude());
+        double[] b = toXY(q.latitude(), q.longitude());
+        return Math.hypot(a[0] - b[0], a[1] - b[1]) <= MERGE_GAP_METERS;
     }
 
     private List<double[]> toXYLine(Edge edge) {
