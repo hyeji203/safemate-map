@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { colors } from '../styles/colors'
 import { categoryLabel } from '../constants/reportCategories'
 import { reportApi } from '../api/reportApi'
+import { useNotifications } from '../hooks/useNotifications'
 
 /**
  * 제보 마커 클릭 시 뜨는 상세 정보. 같은 위치에 여러 건이 쌓여있으면 전부 목록으로 보여준다
@@ -11,6 +12,7 @@ import { reportApi } from '../api/reportApi'
 export default function ReportDetail({ reports, onClose, onDeleted, onAddReport }) {
   const [deletingId, setDeletingId] = useState(null)
   const [error, setError] = useState(null)
+  const { markMineDeleted } = useNotifications()
 
   if (!reports || reports.length === 0) return null
 
@@ -22,6 +24,7 @@ export default function ReportDetail({ reports, onClose, onDeleted, onAddReport 
     setError(null)
     try {
       await reportApi.remove(id)
+      markMineDeleted()
       onDeleted?.(id)
     } catch (err) {
       if (err.response?.status === 403) {

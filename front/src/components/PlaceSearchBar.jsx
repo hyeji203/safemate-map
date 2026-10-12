@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { colors } from '../styles/colors'
 import { routeHistoryKey } from '../hooks/useRouteHistory'
 
@@ -110,20 +110,19 @@ export function PlaceResults({ search, onSelect }) {
       {!loading &&
         !error &&
         results.map((place, i) => (
-          <button
-            key={`${place.placeName}-${place.latitude}-${place.longitude}-${i}`}
-            type="button"
-            onClick={() => onSelect(place)}
-            style={resultItemStyle}
-          >
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-              <span style={{ fontWeight: 700, color: colors.navy }}>{place.placeName}</span>
-              {place.categoryName && (
-                <span style={{ fontSize: 12, color: colors.gray }}>{place.categoryName}</span>
-              )}
-            </div>
-            <div style={{ fontSize: 12, color: colors.gray, marginTop: 2 }}>{place.addressName}</div>
-          </button>
+          <Fragment key={`${place.placeName}-${place.latitude}-${place.longitude}-${i}`}>
+            {/* 서버가 검색어와 잘 맞는 결과 → 가까운 결과(nearby) 순으로 주므로, 가까운 결과가 시작되는 곳에 구분선 */}
+            {place.nearby && !results[i - 1]?.nearby && <div style={sectionDividerStyle}>가까운 곳</div>}
+            <button type="button" onClick={() => onSelect(place)} style={resultItemStyle}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                <span style={{ fontWeight: 700, color: colors.navy }}>{place.placeName}</span>
+                {place.categoryName && (
+                  <span style={{ fontSize: 12, color: colors.gray }}>{place.categoryName}</span>
+                )}
+              </div>
+              <div style={{ fontSize: 12, color: colors.gray, marginTop: 2 }}>{place.addressName}</div>
+            </button>
+          </Fragment>
         ))}
     </div>
   )
@@ -188,6 +187,16 @@ const messageStyle = {
   padding: 14,
   fontSize: 13,
   color: colors.gray,
+}
+
+const sectionDividerStyle = {
+  padding: '8px 16px 6px',
+  fontSize: 12,
+  fontWeight: 700,
+  color: colors.gray,
+  background: colors.background,
+  borderTop: `1px solid ${colors.gray}33`,
+  borderBottom: `1px solid ${colors.gray}22`,
 }
 
 const resultItemStyle = {

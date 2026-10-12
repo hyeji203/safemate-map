@@ -7,6 +7,7 @@ import PlaceSearchBar, { PlaceResults } from '../components/PlaceSearchBar'
 import PlaceSheet from '../components/PlaceSheet'
 import { usePlaceSearch } from '../hooks/usePlaceSearch'
 import { useRouteHistory } from '../hooks/useRouteHistory'
+import { useNotifications } from '../hooks/useNotifications'
 import ReportModal from '../components/ReportModal'
 import ReportDetail from '../components/ReportDetail'
 import { reportApi } from '../api/reportApi'
@@ -141,6 +142,13 @@ export default function MapPage() {
     }
   }, [])
 
+  // 지도 화면을 보는 중에 알림 팝업을 누르면 화면이 새로 마운트되지 않아 routedState(초기 중심)로는 못 받는다.
+  // 그래서 최초 마운트 이후에 들어온 focus는 여기서 바로 그 위치로 이동시킨다.
+  useEffect(() => {
+    const focus = location.state?.focus
+    if (focus && location.state !== routedState) setLocationFocus({ lat: focus.lat, lng: focus.lng, level: 3 })
+  }, [location, routedState])
+
   // 도착지만 정해졌으면 출발지는 현재 위치로 자동으로 채운다 (위치 권한이 없으면 지금처럼 직접 검색).
   // 걸을 때마다 경로를 다시 찾지 않도록 정한 순간의 위치로 고정한다. 바꾸고 싶으면 위쪽 바에서 출발지를 누르면 된다.
   // 길찾기 기록에는 좌표 없이 "현재 위치에서 출발"이라는 표시만 남긴다 (useRouteHistory 참고)
@@ -211,9 +219,11 @@ export default function MapPage() {
     }
   }, [])
 
+  // 처음 들어올 때 + 누군가 새 제보를 올릴 때마다(실시간 알림) 제보 마커를 다시 불러온다
+  const { reportVersion } = useNotifications()
   useEffect(() => {
     loadReports()
-  }, [loadReports])
+  }, [loadReports, reportVersion])
 
   // 즐겨찾기 (마이페이지 담당). 장소 정보 카드에 "즐겨찾기됨" 표시를 하려고 미리 불러 둔다
   const [favorites, setFavorites] = useState([])

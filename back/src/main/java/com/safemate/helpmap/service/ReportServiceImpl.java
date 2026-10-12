@@ -85,18 +85,24 @@ public class ReportServiceImpl implements ReportService {
             deleteImageFile(report.getImagePath());
         }
         reportRepository.delete(report);
+        // 다른 사용자 화면에서 마커·알림을 지우도록 삭제된 제보 id만 보낸다
+        broadcastAfterCommit("/topic/reports/deleted", Map.of("id", reportId), reportId);
     }
 
-    // 새 제보를 /topic/reports 구독자(프론트 알림)에게 보낸다. 커밋 전에 보내면 롤백된 제보가 알림으로 나갈 수 있어서
-    // 커밋이 끝난 뒤에 보낸다. 전송 실패는 제보 등록 결과에 영향을 주지 않도록 로그만 남긴다.
     private void broadcastAfterCommit(ReportResponse response) {
+        broadcastAfterCommit("/topic/reports", response, response.id());
+    }
+
+    // 제보 등록/삭제를 구독자(프론트 알림)에게 보낸다. 커밋 전에 보내면 롤백된 변경이 알림으로 나갈 수 있어서
+    // 커밋이 끝난 뒤에 보낸다. 전송 실패는 등록/삭제 결과에 영향을 주지 않도록 로그만 남긴다.
+    private void broadcastAfterCommit(String destination, Object payload, Long reportId) {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
                 try {
-                    messagingTemplate.convertAndSend("/topic/reports", response);
+                    messagingTemplate.convertAndSend(destination, payload);
                 } catch (Exception e) {
-                    log.warn("제보 브로드캐스트 실패: reportId={}", response.id(), e);
+                    log.warn("제보 브로드캐스트 실패: destination={}, reportId={}", destination, reportId, e);
                 }
             }
         });
