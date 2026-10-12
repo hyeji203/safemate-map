@@ -126,7 +126,67 @@
   96%, 100% { opacity: 0; transform: translate(-50%, 0); }
 }
 
-/* 5단계: 즐겨찾기 탭 → 저장된 장소 / 마이 탭 → 사용가이드 다시 보기 */
+/* 5단계: 주변 제보 버튼(남색 → 흰색) → 목록 올라옴 → "가로등" 버튼 → 사진 */
+.tut-nb-btn { animation-name: tut-nb-btn; }
+@keyframes tut-nb-btn {
+  0%, 12% { background: #1a2b4c; color: #fff; border-color: transparent; }
+  15%, 92% { background: #fff; color: #1a2b4c; border-color: #1a2b4c; }
+  100% { background: #1a2b4c; color: #fff; border-color: transparent; }
+}
+.tut-nb-sheet { animation-name: tut-nb-sheet; }
+@keyframes tut-nb-sheet {
+  0%, 15% { transform: translateY(110%); }
+  22%, 92% { transform: translateY(0); }
+  100% { transform: translateY(110%); }
+}
+.tut-nb-all { animation-name: tut-nb-all; }
+@keyframes tut-nb-all {
+  0%, 51% { background: #1a2b4c; color: #fff; border-color: #1a2b4c; }
+  53%, 100% { background: #fff; color: #334155; border-color: #cbd5e1; }
+}
+.tut-nb-chip { animation-name: tut-nb-chip; }
+@keyframes tut-nb-chip {
+  0%, 51% { background: #fff; color: #334155; border-color: #cbd5e1; }
+  53%, 100% { background: #1a2b4c; color: #fff; border-color: #1a2b4c; }
+}
+.tut-nb-list-all { animation-name: tut-nb-list-all; }
+@keyframes tut-nb-list-all {
+  0%, 52% { opacity: 1; }
+  55%, 100% { opacity: 0; }
+}
+.tut-nb-list-cat { animation-name: tut-nb-list-cat; }
+@keyframes tut-nb-list-cat {
+  0%, 53% { opacity: 0; }
+  58%, 100% { opacity: 1; }
+}
+
+/* 6단계: 팝업이 내려오고 마커·알림 배지가 생김 → 팝업을 누르면 닫히고 위치가 깜빡, 배지는 읽음 처리 */
+.tut-al-toast { animation-name: tut-al-toast; }
+@keyframes tut-al-toast {
+  0%, 10% { opacity: 0; transform: translateY(-120%); }
+  16%, 56% { opacity: 1; transform: none; }
+  60%, 100% { opacity: 0; transform: none; }
+}
+.tut-al-marker { animation-name: tut-al-marker; }
+@keyframes tut-al-marker {
+  0%, 16% { opacity: 0; transform: translate(-50%, -160%); }
+  22%, 92% { opacity: 1; transform: translate(-50%, -50%); }
+  100% { opacity: 0; transform: translate(-50%, -50%); }
+}
+.tut-al-ring { animation-name: tut-al-ring; }
+@keyframes tut-al-ring {
+  0%, 59% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  62% { opacity: 1; transform: translate(-50%, -50%) scale(0.6); }
+  78%, 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.4); }
+}
+.tut-al-badge { animation-name: tut-al-badge; }
+@keyframes tut-al-badge {
+  0%, 18% { opacity: 0; transform: scale(0.4); }
+  22%, 57% { opacity: 1; transform: none; }
+  60%, 100% { opacity: 0; transform: none; }
+}
+
+/* 7단계: 즐겨찾기 탭 → 저장된 장소 / 마이 탭 → 사용가이드 다시 보기 */
 .tut-tab-1 { animation-name: tut-tab-1; }
 @keyframes tut-tab-1 {
   0%, 14% { color: #94a3b8; }
@@ -161,4 +221,9 @@
   .tut-report-btn { background: #e5484d; }
   .tut-pick { background: #ffb020; }
   .tut-tab-2 { color: #ffb800; }
+  .tut-nb-btn { background: #fff; color: #1a2b4c; border-color: #1a2b4c; }
+  .tut-nb-chip { background: #1a2b4c; color: #fff; border-color: #1a2b4c; }
+  .tut-nb-all { background: #fff; color: #334155; border-color: #cbd5e1; }
+  .tut-nb-list-all, .tut-al-toast, .tut-al-ring, .tut-al-badge { opacity: 0; }
+  .tut-al-marker { transform: translate(-50%, -50%); }
 }

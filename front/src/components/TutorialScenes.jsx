@@ -179,7 +179,117 @@ export function ReportScene() {
   )
 }
 
-// 5단계: 즐겨찾기 탭 → 저장한 장소, 마이 탭 → 사용가이드 다시 보기
+// 5단계: "주변 제보" 버튼 → 목록이 올라옴 → "가로등" 버튼으로 골라 보면 사진도 보인다
+export function NearbyScene() {
+  const dots = [
+    { x: 120, y: 75 },
+    { x: 205, y: 60 },
+    { x: 265, y: 100 },
+  ]
+  return (
+    <SceneFrame>
+      <MapBackdrop>
+        {dots.map(({ x, y }) => (
+          <circle key={`${x}-${y}`} cx={x} cy={y} r="6" fill={colors.red} stroke="#fff" strokeWidth="2" />
+        ))}
+      </MapBackdrop>
+      <div className="absolute inset-x-2 top-2 flex h-6 items-center gap-1.5 rounded-lg bg-white px-2 text-[11px] text-slate-400 shadow">
+        <Search size={12} className="shrink-0" />
+        장소, 주소 검색
+      </div>
+      <span className="tut-nb-btn absolute top-10 left-2 flex items-center gap-1 rounded-full border-2 border-solid px-2 py-0.5 text-[10px] font-bold shadow">
+        주변 제보
+        <span className="rounded-full px-1.5 text-[9px] text-white" style={{ background: colors.red }}>
+          3
+        </span>
+        <Tap at={0.1} style={{ left: '50%', top: '50%' }} />
+      </span>
+      <div className="tut-nb-sheet absolute inset-x-0 bottom-0 flex h-[62%] flex-col gap-1 rounded-t-xl bg-white px-2.5 pt-1.5 shadow-lg">
+        <div className="flex gap-1 text-[9px] font-bold whitespace-nowrap">
+          <span className="tut-nb-all rounded-full border border-solid px-1.5 py-px">전체 3</span>
+          <span className="tut-nb-chip relative rounded-full border border-solid px-1.5 py-px">
+            💡 가로등 고장 1
+            <Tap at={0.5} style={{ left: '50%', top: '50%' }} />
+          </span>
+          <span className="rounded-full border border-solid border-slate-300 px-1.5 py-px text-slate-700">🌙 어두운 골목 1</span>
+        </div>
+        <div className="relative min-h-0 flex-1">
+          <div className="tut-nb-list-all absolute inset-0 flex flex-col">
+            <NearbyRow icon="💡" label="가로등 고장" distance="80m" />
+            <NearbyRow icon="🌙" label="어두운 골목" distance="200m" />
+            <NearbyRow icon="🚶" label="인적 드묾" distance="450m" />
+          </div>
+          <div className="tut-nb-list-cat absolute inset-0 flex flex-col">
+            <NearbyRow icon="💡" label="가로등 고장" distance="80m" />
+            {/* 제보 사진 자리 (설명용 모형) */}
+            <div className="mt-0.5 flex min-h-0 flex-1 items-center justify-center rounded-md bg-slate-100">
+              <span className="h-full w-1/3 rounded" style={{ background: `linear-gradient(135deg, ${colors.navy}, #4a5f86)` }} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </SceneFrame>
+  )
+}
+
+function NearbyRow({ icon, label, distance }) {
+  return (
+    <div className="flex items-center gap-1 border-0 border-b border-solid border-slate-100 py-0.5 text-[10px]">
+      <span>{icon}</span>
+      <b className="flex-1 text-slate-800">{label}</b>
+      <b style={{ color: colors.red }}>{distance}</b>
+    </div>
+  )
+}
+
+// 6단계: 다른 사람이 제보하면 위쪽에 팝업 + 지도에 마커 + 알림 탭 배지 → 팝업을 누르면 그 위치로
+export function AlertScene() {
+  const spot = { x: 175, y: 80 }
+  const tabs = [
+    { Icon: Map, label: '지도' },
+    { Icon: Star, label: '즐겨찾기' },
+    { Icon: Bell, label: '알림', badge: true },
+    { Icon: User, label: '마이' },
+  ]
+  return (
+    <SceneFrame>
+      <MapBackdrop />
+      <span
+        className="tut-al-marker absolute flex size-5 items-center justify-center rounded-full border-2 border-solid border-white text-[10px] shadow"
+        style={{ ...pos(spot), background: colors.red }}
+      >
+        💡
+      </span>
+      <span className="tut-al-ring absolute size-10 rounded-full border-2 border-solid" style={{ ...pos(spot), borderColor: colors.red }} />
+      <div className="tut-al-toast absolute inset-x-3 top-2 flex items-center gap-2 rounded-lg px-2.5 py-1.5 shadow-lg" style={{ background: colors.navy }}>
+        <span className="text-[13px]">💡</span>
+        <span className="flex min-w-0 flex-col leading-tight">
+          <b className="text-[11px] text-white">새 위험 제보</b>
+          <span className="truncate text-[9px] text-slate-300">가로등 고장 · 눌러서 지도에서 보기</span>
+        </span>
+        <Tap at={0.55} style={{ left: '50%', top: '50%' }} />
+      </div>
+      <div className="absolute inset-x-0 bottom-0 flex border-0 border-t border-solid border-line bg-night py-1">
+        {tabs.map(({ Icon, label, badge }) => (
+          <span key={label} className="relative flex flex-1 flex-col items-center text-[9px] text-muted">
+            <Icon size={13} />
+            {label}
+            {badge && (
+              <span
+                className="tut-al-badge absolute -top-1 left-1/2 ml-1 rounded-full px-1 text-[8px] leading-tight font-bold text-white"
+                style={{ background: colors.red }}
+              >
+                1
+              </span>
+            )}
+          </span>
+        ))}
+      </div>
+    </SceneFrame>
+  )
+}
+
+// 7단계: 즐겨찾기 탭 → 저장한 장소, 마이 탭 → 사용가이드 다시 보기
 export function FavoritesScene() {
   const tabs = [
     { Icon: Map, label: '지도' },
