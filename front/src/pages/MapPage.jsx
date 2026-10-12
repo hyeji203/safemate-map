@@ -484,6 +484,21 @@ export default function MapPage() {
 
   // 출발/도착 중 하나라도 초기화되면 이전 경로는 숨긴다
   const visibleRoutes = start && end ? routes : null
+  // 안심경로가 최단경로와 같은 길인지 (지나는 교차로가 모두 같으면 같은 길)
+  const sameRoute =
+    !!visibleRoutes &&
+    visibleRoutes.safe.path.map((p) => p.nodeId).join() === visibleRoutes.shortest.path.map((p) => p.nodeId).join()
+  // 같은 길이라는 안내는 경로가 새로 나올 때 잠깐만 띄우고 사라지게 한다 (카드 위를 계속 가리지 않게)
+  const [sameRouteNotice, setSameRouteNotice] = useState(false)
+  useEffect(() => {
+    if (!sameRoute) {
+      setSameRouteNotice(false)
+      return
+    }
+    setSameRouteNotice(true)
+    const timer = setTimeout(() => setSameRouteNotice(false), 3000)
+    return () => clearTimeout(timer)
+  }, [sameRoute, visibleRoutes])
 
   // 고른 경로에서 큰 도로를 건너는 곳은 네이버지도처럼 건너기 시작하는 지점에 횡단보도 배지를 단다
   // (경로선은 끊지 않고 그대로 둔다)
@@ -757,10 +772,30 @@ export default function MapPage() {
             left: 12,
             right: 84, // 제보 버튼 자리
             display: 'flex',
+            flexDirection: 'column',
             gap: 8,
             color: colors.navy,
           }}
         >
+          {sameRouteNotice && (
+            // 두 경로가 같으면 오류로 보일 수 있어서, 왜 같은지 카드 위에 알려 준다
+            <div
+              style={{
+                alignSelf: 'flex-start',
+                background: colors.navy,
+                color: colors.white,
+                borderRadius: 8,
+                padding: '6px 10px',
+                fontSize: 12,
+                whiteSpace: 'nowrap', // 좁은 화면에서도 한 줄로
+              }}
+            >
+              {visibleRoutes.safe.darkDistanceMeters < 1 && visibleRoutes.safe.reportedDistanceMeters < 1
+                ? '최단경로가 이미 안전한 길이에요'
+                : '더 안전하게 돌아갈 길이 없어요'}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8 }}>
           <RouteCard
             label="안심경로"
             color={ROUTE_COLORS.safe}
@@ -775,6 +810,7 @@ export default function MapPage() {
             selected={selectedRouteKey === 'shortest'}
             onSelect={() => setSelectedRouteKey('shortest')}
           />
+          </div>
         </div>
       ) : (
         <div
