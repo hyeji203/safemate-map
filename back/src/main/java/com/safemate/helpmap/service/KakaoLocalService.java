@@ -9,11 +9,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Stream;
 
 /**
  * 카카오 로컬 API(REST API 키 사용) 연동 서비스.
@@ -24,9 +27,15 @@ public class KakaoLocalService {
 
     private static final String BASE_URL = "https://dapi.kakao.com";
     // 경로 탐색 시연 지역 중심(tools/build_osm_graph.py의 BBOX 가운데, 단대오거리역 근처).
-    // 검색 결과를 이 지점에서 가까운 순으로 정렬해, 그래프가 없는 먼 지역 결과보다 시연 지역 결과가 먼저 오게 한다.
+    // 검색 반경의 기준점. 같은 정확도면 이 지점에서 가까운 결과가 먼저 오고, 반경 밖 먼 지역 결과는 빠진다.
     private static final double CENTER_LAT = 37.4465;
     private static final double CENTER_LNG = 127.1565;
+
+    // 장소 검색 반경(m). 카카오 API 최대값. 성남·서울 동남권 정도까지 들어온다
+    private static final int SEARCH_RADIUS_METERS = 20000;
+    // 검색 결과: 검색어와 잘 맞는 것 위쪽 몇 개 + 가까운 것 아래쪽 몇 개 (겹치면 하나만)
+    private static final int ACCURATE_RESULT_COUNT = 7;
+    private static final int NEARBY_RESULT_COUNT = 8;
 
     // 지도를 눌렀을 때 건물 이름으로 찾은 장소를 인정하는 반경(m). 캠퍼스처럼 건물이 큰 곳도 잡히도록 넉넉하게
     private static final int BUILDING_PLACE_RADIUS_METERS = 50;
@@ -38,7 +47,7 @@ public class KakaoLocalService {
             "CT1", "AG2", "PO3", "AT4", "AD5", "FD6", "CE7", "HP8", "PM9");
 
     private final RestClient restClient;
-    // 카테고리 검색은 코드마다 따로 호출해야 해서 한꺼번에 병렬로 보낸다
+    // 카테고리 검색은 코드마다 따로 호출해야 해서 한꺼번에 병렬로 보낸다 (키워드 검색의 정확도순/거리순 두 번 호출도 같이 쓴다)
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
     public KakaoLocalService(@Value("${kakao.rest-api-key}") String restApiKey) {
@@ -48,35 +57,62 @@ public class KakaoLocalService {
                 .build();
     }
 
-    /** 키워드(장소명/주소 일부)로 장소·주소를 검색한다. 시연 지역과 가까운 순으로 정렬. */
+    /**
+     * 키워드(장소명/주소 일부)로 장소·주소를 검색한다.
+     * 검색어와 잘 맞는 결과(accuracy)를 먼저 보여주고, 그 아래에 시연 지역에서 가까운 결과(distance)를 이어 붙인다(중복 제외).
+     * 가까운 순만 쓰면 "신구대" 검색에 신구대학교 대신 근처 "○○ 신구대점" 가게들만 나오고,
+     * 정확도 순만 쓰면 동네 가게를 찾기 어려워서 둘을 합친다.
+     * 둘 다 시연 지역 중심에서 SEARCH_RADIUS_METERS 안으로 제한해 대전 신흥역 같은 먼 동명 장소는 뺀다.
+     */
     public List<PlaceResponse> searchKeyword(String query) {
+        CompletableFuture<List<KeywordSearchResponse.Document>> accurate =
+                CompletableFuture.supplyAsync(() -> searchKeyword(query, "accuracy", ACCURATE_RESULT_COUNT), executor);
+        CompletableFuture<List<KeywordSearchResponse.Document>> nearby =
+                CompletableFuture.supplyAsync(() -> searchKeyword(query, "distance", NEARBY_RESULT_COUNT), executor);
+
+        List<PlaceResponse> accurateResults = accurate.join().stream().map(d -> toSearchResult(d, false)).toList();
+        // "가까운 곳"에는 위쪽 결과 중 가장 먼 것보다 가까운 장소만 넣는다.
+        // 스타벅스처럼 위쪽이 이미 가까운 순이면 아래에 더 먼 지점만 붙어서 "가까운 곳"이라는 이름과 안 맞는다.
+        int farthestAccurate = accurateResults.stream().mapToInt(PlaceResponse::distanceMeters).max().orElse(Integer.MAX_VALUE);
+
+        // placeUrl 기준으로 중복 제거. 정확도순에 이미 있는 장소는 위쪽(nearby=false)에 남는다
+        Map<String, PlaceResponse> merged = new LinkedHashMap<>();
+        Stream.concat(
+                        accurateResults.stream(),
+                        nearby.join().stream()
+                                .map(d -> toSearchResult(d, true))
+                                .filter(p -> p.distanceMeters() < farthestAccurate))
+                .forEach(p -> merged.putIfAbsent(p.placeUrl(), p));
+        return List.copyOf(merged.values());
+    }
+
+    private PlaceResponse toSearchResult(KeywordSearchResponse.Document d, boolean nearby) {
+        return new PlaceResponse(
+                d.placeName(),
+                d.roadAddressName() != null && !d.roadAddressName().isBlank() ? d.roadAddressName() : d.addressName(),
+                Double.parseDouble(d.y()),
+                Double.parseDouble(d.x()),
+                lastCategory(d.categoryName()),
+                d.phone() == null ? "" : d.phone(),
+                d.placeUrl(),
+                d.distance() == null || d.distance().isBlank() ? 0 : Integer.parseInt(d.distance()),
+                nearby);
+    }
+
+    private List<KeywordSearchResponse.Document> searchKeyword(String query, String sort, int size) {
         KeywordSearchResponse response = restClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/v2/local/search/keyword.json")
                         .queryParam("query", query)
                         .queryParam("x", CENTER_LNG)
                         .queryParam("y", CENTER_LAT)
-                        .queryParam("sort", "distance")
-                        .queryParam("size", 10)
+                        .queryParam("radius", SEARCH_RADIUS_METERS)
+                        .queryParam("sort", sort)
+                        .queryParam("size", size)
                         .build())
                 .retrieve()
                 .body(KeywordSearchResponse.class);
-
-        if (response == null || response.documents() == null) {
-            return List.of();
-        }
-        return response.documents().stream()
-                .map(d -> new PlaceResponse(
-                        d.placeName(),
-                        d.roadAddressName() != null && !d.roadAddressName().isBlank()
-                                ? d.roadAddressName() : d.addressName(),
-                        Double.parseDouble(d.y()),
-                        Double.parseDouble(d.x()),
-                        lastCategory(d.categoryName()),
-                        d.phone() == null ? "" : d.phone(),
-                        d.placeUrl(),
-                        d.distance() == null || d.distance().isBlank() ? 0 : Integer.parseInt(d.distance())))
-                .toList();
+        return response == null || response.documents() == null ? List.of() : response.documents();
     }
 
     /**
@@ -113,7 +149,7 @@ public class KakaoLocalService {
 
         return Optional.of(new PlaceResponse(
                 buildingName.isBlank() ? address : buildingName, address, lat, lng, "", "", null,
-                distanceFromCenter(lat, lng)));
+                distanceFromCenter(lat, lng), false));
     }
 
     private Optional<KeywordSearchResponse.Document> findNearestByKeyword(String query, double lat, double lng) {
@@ -172,7 +208,8 @@ public class KakaoLocalService {
                 lastCategory(d.categoryName()),
                 d.phone() == null ? "" : d.phone(),
                 d.placeUrl(),
-                distanceFromCenter(lat, lng));
+                distanceFromCenter(lat, lng),
+                false);
     }
 
     private int distanceFromCenter(double lat, double lng) {
