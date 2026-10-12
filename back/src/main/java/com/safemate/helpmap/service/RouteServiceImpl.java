@@ -57,7 +57,10 @@ public class RouteServiceImpl implements RouteService {
         Map<Long, EdgeRisk> risks = riskWeightCalculator.calculate(
                 edges, streetLightRepository.findAll(), reportRepository.findAll());
         // 중앙분리대 도로의 두 차로를 직접 찍은 횡단보도로 잇는 간선 (DB에 없어서 id가 없다)
-        edges.addAll(MedianCrossings.build(edges, crosswalkCatalog));
+        List<Edge> medianCrossings = MedianCrossings.build(edges, crosswalkCatalog);
+        // 직접 찍은 횡단보도 건너편에서 큰 도로와 끊겨 있는 작은 길을 잇는 간선 (예: 신구대 캠퍼스 도로 <-> 금빛로)
+        edges.addAll(CrosswalkConnectors.build(edges, crosswalkCatalog));
+        edges.addAll(medianCrossings);
 
         Map<Long, List<Edge>> adjacency = new HashMap<>();
         for (Edge edge : edges) {
@@ -98,7 +101,8 @@ public class RouteServiceImpl implements RouteService {
                 searchGraph.put(end.getId(), outs);
             }
         }
-        // 부분 간선은 원래 도로의 위험도, MedianCrossings 횡단 간선은 차도 가로등이 있는 큰 도로를 건너는 짧은 구간이라 0
+        // 부분 간선은 원래 도로의 위험도, MedianCrossings 횡단 간선·CrosswalkConnectors 연결 간선은
+        // 차도 가로등이 있는 큰 도로 횡단보도 옆의 짧은 구간이라 0
         Function<Edge, EdgeRisk> riskOf = e -> e.getId() != null ? risks.get(e.getId())
                 : partialRisks.getOrDefault(e, NO_RISK);
 
@@ -116,6 +120,12 @@ public class RouteServiceImpl implements RouteService {
         Planned safe = bestRoute(sidewalks, start, goal, searchGraph, keys, safeCost, origin, destination);
         if (shortest == null || safe == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "출발지와 도착지를 잇는 경로가 없습니다.");
+        }
+        // 안심경로가 최단경로 기준으로도 더 나으면 최단경로도 그 길로 한다. 탐색 비용은 그래프 기준이라 실제 걷는 길과
+        // 조금 어긋나서(예: 횡단보도를 건넌 뒤 골목 입구까지 되돌아가는 거리는 안 셈), 안심경로가 더 짧게 표시되는 일이 있었다
+        if (score(sidewalks, start, goal, safe, keys, walkingCost, origin, destination)
+                < score(sidewalks, start, goal, shortest, keys, walkingCost, origin, destination)) {
+            shortest = safe;
         }
 
         return new RoutesResponse(
@@ -149,16 +159,23 @@ public class RouteServiceImpl implements RouteService {
                 continue; // 벌점을 줘도 같은 길이면 다른 후보가 없는 것
             }
             seen.add(route.edges());
-            SidewalkPlanner.Result drawn = sidewalks.plan(start, route.edges(), route.sides(), origin, destination);
-            double graphLength = graphLength(start, goal, route, origin, destination);
-            double score = sidewalks.cost(start, route, keys, cost, origin, destination)
-                    * (graphLength > 0 ? length(drawn.geometry()) / graphLength : 1);
+            Planned planned = new Planned(route, sidewalks.plan(start, route.edges(), route.sides(), origin, destination));
+            double score = score(sidewalks, start, goal, planned, keys, cost, origin, destination);
             if (score < bestScore) {
                 bestScore = score;
-                best = new Planned(route, drawn);
+                best = planned;
             }
         }
         return best;
+    }
+
+    /** 경로를 비교하는 값: 탐색 비용(보도·횡단·도착 비용 포함)을 실제로 그려지는 길이 비율로 고친 것 */
+    private static double score(SidewalkPlanner sidewalks, Node start, Node goal, Planned planned,
+                                ToLongFunction<Node> keys, ToDoubleFunction<Edge> cost,
+                                double[] origin, double[] destination) {
+        double graphLength = graphLength(start, goal, planned.route(), origin, destination);
+        return sidewalks.cost(start, planned.route(), keys, cost, origin, destination)
+                * (graphLength > 0 ? length(planned.drawn().geometry()) / graphLength : 1);
     }
 
     /** 그래프 간선 길이 합 + 요청 좌표와 도로 위 지점 사이 (탐색 비용이 재는 거리와 같은 기준) */

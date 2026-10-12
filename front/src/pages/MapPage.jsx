@@ -739,12 +739,12 @@ export default function MapPage() {
             height: 44,
             borderRadius: '50%',
             border: 'none',
-            background: colors.white,
+            background: colors.navy, // 현재 위치·제보 버튼과 같은 남색
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             padding: 0,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
             cursor: 'pointer',
           }}
           aria-label={showFavorites ? '즐겨찾기 숨기기' : '즐겨찾기 표시'}
@@ -754,7 +754,7 @@ export default function MapPage() {
             <path
               d="M12 2.5l2.9 6.2 6.6.7-5 4.5 1.4 6.6L12 17.2l-5.9 3.3 1.4-6.6-5-4.5 6.6-.7z"
               fill={showFavorites ? colors.amber : 'none'}
-              stroke={showFavorites ? colors.amber : colors.gray}
+              stroke={showFavorites ? colors.amber : colors.white}
               strokeWidth="2"
               strokeLinejoin="round"
             />
