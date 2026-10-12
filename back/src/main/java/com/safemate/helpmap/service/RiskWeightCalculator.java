@@ -26,7 +26,8 @@ public class RiskWeightCalculator {
     static final double LIGHT_RADIUS_METERS = 25;
     // 간선 길이 이만큼마다 가로등이 1개씩 있으면 어두움 0. 개수만 보면 20m 길과 200m 길이 같은 기준을 받으므로
     // 길이 대비 밀도로 본다. 짧은 간선도 최소 1개는 있어야 밝은 것으로 본다
-    static final double METERS_PER_LIGHT = 40;
+    // (40m로 두었더니 어두운 골목이 적어 안심경로가 최단경로와 같게 나오는 일이 많아서 25m로 줄임)
+    static final double METERS_PER_LIGHT = 25;
 
     // 간선에서 이 거리 이내의 제보를 그 간선의 위험으로 본다
     static final double REPORT_RADIUS_METERS = 25;
