@@ -34,6 +34,8 @@ public class GraphCsvLoader implements CommandLineRunner {
 
     private static final String NODES_CSV = "data/graph-nodes.csv";
     private static final String EDGES_CSV = "data/graph-edges.csv";
+    // RoadType.WIDE_RESIDENTIAL (패키지가 달라 값을 그대로 둔다)
+    private static final String WIDE_RESIDENTIAL = "residential_wide";
 
     private final NodeRepository nodeRepository;
     private final EdgeRepository edgeRepository;
@@ -45,10 +47,13 @@ public class GraphCsvLoader implements CommandLineRunner {
 
         if (nodeRepository.count() > 0) {
             // DB의 그래프가 CSV와 같으면 그대로 둔다. 개수가 다르거나 도로 종류가 없는 예전 형식이면
-            // CSV로 다시 적재한다 (노드를 참조하는 다른 테이블은 없음)
+            // CSV로 다시 적재한다 (노드를 참조하는 다른 테이블은 없음).
+            // 넓은 골목 표시(tools/mark_wide_residential.py)는 개수가 그대로라 그 간선 수도 따로 비교한다
+            long wideRows = edgeRows.stream().filter(cols -> WIDE_RESIDENTIAL.equals(cols[3].trim())).count();
             boolean upToDate = nodeRepository.count() == nodeRows.size()
                     && edgeRepository.count() == edgeRows.size() * 2L
-                    && !edgeRepository.existsByRoadTypeIsNull();
+                    && !edgeRepository.existsByRoadTypeIsNull()
+                    && edgeRepository.countByRoadType(WIDE_RESIDENTIAL) == wideRows * 2;
             if (upToDate) {
                 return;
             }

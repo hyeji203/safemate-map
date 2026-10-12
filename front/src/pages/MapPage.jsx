@@ -75,6 +75,8 @@ const STREETLIGHT_COLOR = '#FFD21F'
 
 // 경로선·경로 카드 색 (안심경로 = 노랑, 최단경로 = 회색)
 const ROUTE_COLORS = { safe: colors.amber, shortest: colors.gray }
+// 안심·최단경로가 같다는 안내가 서서히 사라지는 시간
+const SAME_ROUTE_FADE_MS = 800
 
 // 메인 지도 화면 (필수 MVP).
 // - 상단 검색창에서 장소를 고르면 지도가 그 위치로 이동하고, 하단 정보 카드에서 출발/도착으로 지정한다
@@ -488,16 +490,21 @@ export default function MapPage() {
   const sameRoute =
     !!visibleRoutes &&
     visibleRoutes.safe.path.map((p) => p.nodeId).join() === visibleRoutes.shortest.path.map((p) => p.nodeId).join()
-  // 같은 길이라는 안내는 경로가 새로 나올 때 잠깐만 띄우고 사라지게 한다 (카드 위를 계속 가리지 않게)
-  const [sameRouteNotice, setSameRouteNotice] = useState(false)
+  // 같은 길이라는 안내는 경로가 새로 나올 때 잠깐만 띄우고 서서히 사라지게 한다 (카드 위를 계속 가리지 않게)
+  // 'shown' -> 'fading'(투명해지는 중) -> null(없앰)
+  const [sameRouteNotice, setSameRouteNotice] = useState(null)
   useEffect(() => {
     if (!sameRoute) {
-      setSameRouteNotice(false)
+      setSameRouteNotice(null)
       return
     }
-    setSameRouteNotice(true)
-    const timer = setTimeout(() => setSameRouteNotice(false), 3000)
-    return () => clearTimeout(timer)
+    setSameRouteNotice('shown')
+    const fade = setTimeout(() => setSameRouteNotice('fading'), 3000)
+    const hide = setTimeout(() => setSameRouteNotice(null), 3000 + SAME_ROUTE_FADE_MS)
+    return () => {
+      clearTimeout(fade)
+      clearTimeout(hide)
+    }
   }, [sameRoute, visibleRoutes])
 
   // 고른 경로에서 큰 도로를 건너는 곳은 네이버지도처럼 건너기 시작하는 지점에 횡단보도 배지를 단다
@@ -788,6 +795,8 @@ export default function MapPage() {
                 padding: '6px 10px',
                 fontSize: 12,
                 whiteSpace: 'nowrap', // 좁은 화면에서도 한 줄로
+                opacity: sameRouteNotice === 'fading' ? 0 : 1,
+                transition: `opacity ${SAME_ROUTE_FADE_MS}ms ease`,
               }}
             >
               {visibleRoutes.safe.darkDistanceMeters < 1 && visibleRoutes.safe.reportedDistanceMeters < 1
