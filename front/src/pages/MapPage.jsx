@@ -30,6 +30,9 @@ function isSamePlace(favorite, place) {
   return Math.hypot(dLat, dLng) <= SAME_PLACE_METERS
 }
 
+// 지도에 즐겨찾기 별을 표시할지 기억해 두는 localStorage 키 (장소 좌표가 아니라 켜짐/꺼짐만 저장)
+const SHOW_FAVORITES_KEY = 'safemate_show_favorites'
+
 // 횡단보도 좌표 찍기 모드: 개발 모드에서 루트 .env에 REACT_APP_CROSSWALK_SURVEY=true 를 넣었을 때만 켜진다.
 // 시연 때 개발 서버(npm run dev)로 띄워도 줄 번호 마커·좌표 안내가 보이지 않도록 기본은 꺼 둔다. 배포 빌드에는 들어가지 않는다.
 const CROSSWALK_SURVEY = import.meta.env.DEV && import.meta.env.REACT_APP_CROSSWALK_SURVEY === 'true'
@@ -138,6 +141,14 @@ export default function MapPage() {
     }
   }, [])
 
+  // 도착지만 정해졌으면 출발지는 현재 위치로 자동으로 채운다 (위치 권한이 없으면 지금처럼 직접 검색).
+  // 걸을 때마다 경로를 다시 찾지 않도록 정한 순간의 위치로 고정한다. 바꾸고 싶으면 위쪽 바에서 출발지를 누르면 된다.
+  // 길찾기 기록에는 좌표 없이 "현재 위치에서 출발"이라는 표시만 남긴다 (useRouteHistory 참고)
+  useEffect(() => {
+    if (start || !end || !myLocation) return
+    setStart({ id: 'place-start', lat: myLocation.lat, lng: myLocation.lng, title: '현재 위치', fromMyLocation: true })
+  }, [start, end, myLocation])
+
   const handleLocateMe = () => {
     // level을 안 주면 KakaoMap의 focus 이펙트가 확대/축소는 안 바꾸고 이동만 한다 (지금 보던 배율 유지)
     if (myLocation) setLocationFocus({ lat: myLocation.lat, lng: myLocation.lng })
@@ -213,6 +224,47 @@ export default function MapPage() {
       .then((res) => setFavorites(res.data))
       .catch((err) => console.error('[MapPage] 즐겨찾기 조회 실패', err))
   }, [])
+
+  // 즐겨찾기를 지도에 별로 표시할지 (오른쪽 위 별 버튼). 고른 값은 이 브라우저에 기억해 둔다
+  const [showFavorites, setShowFavorites] = useState(() => {
+    try {
+      return localStorage.getItem(SHOW_FAVORITES_KEY) !== 'false'
+    } catch {
+      return true
+    }
+  })
+
+  const toggleFavorites = () => {
+    setShowFavorites((prev) => {
+      try {
+        localStorage.setItem(SHOW_FAVORITES_KEY, String(!prev))
+      } catch {
+        // 저장이 막혀 있으면 이번 화면에서만 적용된다
+      }
+      return !prev
+    })
+  }
+
+  // 별을 누르면 그 장소의 정보 카드를 띄운다 (출발/도착 지정 가능)
+  // 정보 카드를 보고 있는 장소는 핀과 이름표가 겹치지 않게 별을 빼고 핀만 보인다
+  const favoriteMarkers = useMemo(
+    () =>
+      !showFavorites
+        ? []
+        : favorites.filter((f) => !selectedPlace || !isSamePlace(f, selectedPlace)).map((f) => ({
+            id: `favorite-${f.id}`,
+            lat: f.latitude,
+            lng: f.longitude,
+            title: f.label,
+            label: f.label,
+            star: true,
+            onClick: () =>
+              search.onSelect({ latitude: f.latitude, longitude: f.longitude, placeName: f.label, addressName: f.address }, { fromMap: true }),
+          })),
+    // search.onSelect는 렌더마다 새로 만들어지지만 내부 상태만 바꾸므로 의존성에서 뺀다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [favorites, showFavorites, selectedPlace],
+  )
 
   const selectedFavorite = useMemo(
     () => (selectedPlace ? favorites.find((f) => isSamePlace(f, selectedPlace)) : null),
@@ -363,9 +415,10 @@ export default function MapPage() {
       ...surveyedCrosswalkMarkers,
       ...reportMarkers,
       ...crossingMarkers,
+      ...favoriteMarkers,
       ...searchedPointMarkers,
     ],
-    [streetLightMarkers, surveyedCrosswalkMarkers, reportMarkers, crossingMarkers, searchedPointMarkers],
+    [streetLightMarkers, surveyedCrosswalkMarkers, reportMarkers, crossingMarkers, favoriteMarkers, searchedPointMarkers],
   )
 
   // 고른 경로는 굵고 진하게 맨 위에, 다른 경로는 가늘고 흐리게 아래에 깔아 비교만 할 수 있게 한다
@@ -393,8 +446,10 @@ export default function MapPage() {
 
   // 위쪽 "출발 → 도착" 바에서 한쪽을 누르면 그 자리가 검색창으로 바뀐다.
   // 지금 장소 이름을 그대로 채워 두고 고쳐 쓰게 한다 (비우면 원래 글자가 지워진 것처럼 보여서)
+  // 단, 현재 위치는 검색어로 쓸 이름이 아니라서 빈 칸으로 연다
   const startEditingPoint = (which) => {
-    search.reset((which === 'start' ? start : end)?.title ?? '')
+    const point = which === 'start' ? start : end
+    search.reset(point?.fromMyLocation ? '' : (point?.title ?? ''))
     setEditingPoint(which)
   }
 
@@ -559,8 +614,9 @@ export default function MapPage() {
             history={{
               items: routeHistory.items,
               // 최근 길찾기를 누르면 그 출발→도착을 그대로 다시 찾는다 (경로는 자동으로 계산됨)
+              // 현재 위치에서 출발한 기록은 출발지를 비워 두면 위 이펙트가 지금 위치로 채운다
               onPick: (item) => {
-                setStart({ id: 'place-start', ...item.start })
+                setStart(item.start.fromMyLocation ? null : { id: 'place-start', ...item.start })
                 setEnd({ id: 'place-end', ...item.end })
               },
               onRemove: routeHistory.remove,
@@ -656,6 +712,44 @@ export default function MapPage() {
             </button>
           )}
         </div>
+      )}
+
+      {/* 즐겨찾기 별 표시/숨기기. 검색창 바로 아래 오른쪽 (검색 결과 목록이 펼쳐지면 그 아래로 가려진다).
+          제보 모드에서는 같은 자리에 안내 띠가 뜨므로 숨긴다 */}
+      {!reportMode && (
+        <button
+          type="button"
+          onClick={toggleFavorites}
+          style={{
+            position: 'absolute',
+            zIndex: 9,
+            top: 72,
+            right: 16,
+            width: 44,
+            height: 44,
+            borderRadius: '50%',
+            border: 'none',
+            background: colors.white,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 0,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+            cursor: 'pointer',
+          }}
+          aria-label={showFavorites ? '즐겨찾기 숨기기' : '즐겨찾기 표시'}
+          aria-pressed={showFavorites}
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
+            <path
+              d="M12 2.5l2.9 6.2 6.6.7-5 4.5 1.4 6.6L12 17.2l-5.9 3.3 1.4-6.6-5-4.5 6.6-.7z"
+              fill={showFavorites ? colors.amber : 'none'}
+              stroke={showFavorites ? colors.amber : colors.gray}
+              strokeWidth="2"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
       )}
 
       {/* 장소 정보 카드가 떠 있을 때는 카드에 자리를 내준다 */}
