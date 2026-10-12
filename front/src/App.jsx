@@ -11,6 +11,7 @@ import { AuthProvider } from './hooks/useAuth'
 import { TutorialProvider } from './hooks/useTutorial'
 import { NotificationsProvider } from './hooks/useNotifications'
 import UsageTutorial from './components/UsageTutorial'
+import ReportToast from './components/ReportToast'
 import { colors } from './styles/colors'
 
 function App() {
@@ -41,6 +42,7 @@ function App() {
               <BottomNav />
             </div>
             <UsageTutorial />
+            <ReportToast />
           </BrowserRouter>
         </TutorialProvider>
       </NotificationsProvider>

@@ -7,6 +7,7 @@ import PlaceSearchBar, { PlaceResults } from '../components/PlaceSearchBar'
 import PlaceSheet from '../components/PlaceSheet'
 import { usePlaceSearch } from '../hooks/usePlaceSearch'
 import { useRouteHistory } from '../hooks/useRouteHistory'
+import { useNotifications } from '../hooks/useNotifications'
 import ReportModal from '../components/ReportModal'
 import ReportDetail from '../components/ReportDetail'
 import { reportApi } from '../api/reportApi'
@@ -138,6 +139,13 @@ export default function MapPage() {
     }
   }, [])
 
+  // 지도 화면을 보는 중에 알림 팝업을 누르면 화면이 새로 마운트되지 않아 routedState(초기 중심)로는 못 받는다.
+  // 그래서 최초 마운트 이후에 들어온 focus는 여기서 바로 그 위치로 이동시킨다.
+  useEffect(() => {
+    const focus = location.state?.focus
+    if (focus && location.state !== routedState) setLocationFocus({ lat: focus.lat, lng: focus.lng, level: 3 })
+  }, [location, routedState])
+
   const handleLocateMe = () => {
     // level을 안 주면 KakaoMap의 focus 이펙트가 확대/축소는 안 바꾸고 이동만 한다 (지금 보던 배율 유지)
     if (myLocation) setLocationFocus({ lat: myLocation.lat, lng: myLocation.lng })
@@ -200,9 +208,11 @@ export default function MapPage() {
     }
   }, [])
 
+  // 처음 들어올 때 + 누군가 새 제보를 올릴 때마다(실시간 알림) 제보 마커를 다시 불러온다
+  const { reportVersion } = useNotifications()
   useEffect(() => {
     loadReports()
-  }, [loadReports])
+  }, [loadReports, reportVersion])
 
   // 즐겨찾기 (마이페이지 담당). 장소 정보 카드에 "즐겨찾기됨" 표시를 하려고 미리 불러 둔다
   const [favorites, setFavorites] = useState([])

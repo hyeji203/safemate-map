@@ -5,6 +5,7 @@ import { reportApi } from '../api/reportApi'
 import { categoryIcon, categoryLabel } from '../constants/reportCategories'
 import { useAuth } from '../hooks/useAuth'
 import { useTutorial } from '../hooks/useTutorial'
+import { useNotifications } from '../hooks/useNotifications'
 
 // 로그인 안 한(익명) 사용자는 신뢰도 점수를 서버에서 받을 수 없어 고정값으로 표시한다.
 const RELIABILITY_SCORE = 95
@@ -14,6 +15,7 @@ export default function MyPage() {
   const navigate = useNavigate()
   const { member } = useAuth()
   const { reopen } = useTutorial()
+  const { markMineDeleted } = useNotifications()
   const [reports, setReports] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -45,6 +47,7 @@ export default function MyPage() {
     try {
       await reportApi.remove(id)
       setReports((prev) => prev.filter((r) => r.id !== id))
+      markMineDeleted()
     } catch (err) {
       console.error('[MyPage] 제보 취소 실패', err)
       window.alert('제보를 취소하지 못했습니다. 잠시 후 다시 시도해주세요.')
