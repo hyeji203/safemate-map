@@ -6,14 +6,17 @@ import KakaoMap from '../components/KakaoMap'
 import PlaceSearchBar, { PlaceResults } from '../components/PlaceSearchBar'
 import PlaceSheet from '../components/PlaceSheet'
 import { usePlaceSearch } from '../hooks/usePlaceSearch'
-import { useRouteHistory } from '../hooks/useRouteHistory'
+import { useRouteHistory, routeHistoryKey } from '../hooks/useRouteHistory'
 import { useNotifications } from '../hooks/useNotifications'
 import ReportModal from '../components/ReportModal'
 import ReportDetail from '../components/ReportDetail'
 import NearbyReportsSheet from '../components/NearbyReportsSheet'
-import MapGuide from '../components/MapGuide'
+import QuickStartSheet from '../components/QuickStartSheet'
 import CoachMarks from '../components/CoachMarks'
 import { useTutorial } from '../hooks/useTutorial'
+import { useSafetyLayers, FACILITY_TYPES } from '../hooks/useSafetyLayers'
+import SafetyChips from '../components/SafetyChips'
+import { SAFETY_LAYERS } from '../constants/safetyLayers'
 import { haversineMeters } from '../utils/geo'
 import { reportApi } from '../api/reportApi'
 import { favoriteApi } from '../api/favoriteApi'
@@ -31,6 +34,17 @@ const NEARBY_REPORT_RADIUS_LABEL =
 // 가로등은 이 줌 레벨 이하(= 확대했을 때)에서만 표시 (카카오맵은 숫자가 작을수록 확대)
 // 장소 검색 후 이동하는 레벨(2)에서도 보이도록 2으로 맞춘다
 const STREETLIGHT_MAX_LEVEL = 2
+// CCTV도 지점이 많아서 어느 정도 확대했을 때만 표시
+const CCTV_MAX_LEVEL = 4
+// 안전시설 레이어 종류별 색·아이콘 (칩 줄과 같은 값)
+const SAFETY_LAYER_STYLE = Object.fromEntries(SAFETY_LAYERS.map((l) => [l.key, l]))
+// 칩을 켰는데 지금 확대 정도에서는 안 보일 때 띄우는 안내
+const LAYER_ZOOM_HINTS = {
+  streetlight: '지도를 더 확대하면 가로등이 보여요',
+  cctv: '지도를 더 확대하면 CCTV가 보여요',
+  convenience: '지도를 확대하면 편의점이 보여요',
+  police: '지도를 확대하면 파출소·지구대가 보여요',
+}
 
 // 선택한 장소가 이미 즐겨찾기에 있는지 볼 때, 이 거리(m) 안이면 같은 장소로 본다
 const SAME_PLACE_METERS = 5
@@ -44,8 +58,7 @@ function isSamePlace(favorite, place) {
 // 지도에 즐겨찾기 별을 표시할지 기억해 두는 localStorage 키 (장소 좌표가 아니라 켜짐/꺼짐만 저장)
 const SHOW_FAVORITES_KEY = 'safemate_show_favorites'
 
-// 검색창 아래 사용 안내 카드를 X로 닫았는지 / 첫 방문 코치마크(버튼 말풍선)를 봤는지. 둘 다 이 브라우저에만 기억한다
-const MAP_GUIDE_HIDDEN_KEY = 'safemate_map_guide_hidden'
+// 첫 방문 코치마크(버튼 말풍선)를 "다시 표시 안 함"으로 닫았는지. 이 브라우저에만 기억한다
 const COACH_MARKS_SEEN_KEY = 'safemate_coach_marks_seen'
 
 function readFlag(key) {
@@ -64,6 +77,20 @@ function saveFlag(key) {
   }
 }
 
+// 빠른 출발 칩에 띄울 목적지 수 (즐겨찾기 먼저, 남는 자리는 최근 길찾기 목적지)
+const QUICK_DESTINATION_COUNT = 3
+
+// 즐겨찾기 이름으로 고르는 칩 아이콘 (간단한 규칙만)
+function favoriteIcon(label = '') {
+  if (/집|home/i.test(label)) return '🏠'
+  if (/회사|직장|사무실/.test(label)) return '🏢'
+  if (/학교|대학|캠퍼스/.test(label)) return '🏫'
+  return '⭐'
+}
+
+// 오후 6시 ~ 오전 6시는 검색창 안내 문구를 밤길용으로
+const isNightTime = (date = new Date()) => date.getHours() >= 18 || date.getHours() < 6
+
 // 코치마크 순서 (target은 강조할 요소의 data-coach 값. 하단 탭은 BottomNav의 알림·마이페이지 탭)
 const COACH_STEPS = [
   {
@@ -72,9 +99,9 @@ const COACH_STEPS = [
     text: '도착지를 고르면 안심경로와 최단경로를 함께 비교해 드려요.',
   },
   {
-    target: 'nearby',
-    title: '주변 제보',
-    text: `내 주변 ${NEARBY_REPORT_RADIUS_LABEL} 안의 위험 제보를 가까운 순으로 볼 수 있어요.`,
+    target: 'chips',
+    title: '안전시설 · 주변 제보',
+    text: `보고 싶은 안전시설을 눌러 지도에 표시해요. ⚠ 제보를 누르면 내 주변 ${NEARBY_REPORT_RADIUS_LABEL} 안의 위험 제보를 볼 수 있어요.`,
   },
   {
     target: 'favorites',
@@ -89,7 +116,7 @@ const COACH_STEPS = [
   {
     target: 'report',
     title: '위험구간 제보',
-    text: '어두운 골목, 고장 난 가로등을 발견하면 눌러서 지도에서 위치를 고르고 제보해 주세요.',
+    text: '어두운 골목, 고장 난 가로등을 발견하면 눌러서 지금 내 위치나 지도에서 고른 위치로 제보해 주세요.',
   },
   {
     target: 'tabs',
@@ -364,6 +391,75 @@ export default function MapPage() {
     setFavorites((prev) => [data, ...prev])
   }
 
+  // 안전시설 레이어 (검색창 아래 칩 줄). 지금 보이는 지도 범위를 받아 편의점·파출소를 그 범위만 검색한다.
+  // CCTV는 데이터 파일이 없으면 칩을 흐리게 보여줘야 해서 처음부터 불러 둔다 (없으면 빈 목록 한 번)
+  const [mapBounds, setMapBounds] = useState(null)
+  const safety = useSafetyLayers(mapBounds, { preloadCctv: true })
+  const cctvUnavailable = safety.cctvLoaded && safety.cctvs.length === 0
+
+  // 칩 줄 아래에 잠깐 뜨는 안내 (CCTV 데이터 준비 중, 확대해야 보임)
+  const [mapHint, setMapHint] = useState(null)
+  useEffect(() => {
+    if (!mapHint) return
+    const timer = setTimeout(() => setMapHint(null), 2200)
+    return () => clearTimeout(timer)
+  }, [mapHint])
+
+  // 칩을 켰는데 지금 확대 정도에서는 안 보이면 왜 안 보이는지 알려준다
+  const toggleLayer = (key) => {
+    const turningOn = !safety.layers[key]
+    safety.toggle(key)
+    if (!turningOn) return
+    const level = mapBounds?.level
+    const hidden =
+      key === 'streetlight' ? level > STREETLIGHT_MAX_LEVEL : key === 'cctv' ? level > CCTV_MAX_LEVEL : safety.tooWide
+    setMapHint(hidden ? LAYER_ZOOM_HINTS[key] : null)
+  }
+
+  // CCTV·편의점·파출소 마커: 작고 반투명(subtle)하게, 제보 마커보다 눈에 덜 띄도록.
+  // 편의점·파출소를 누르면 지도에서 장소를 누른 것과 같이 장소 정보 카드를 띄운다 (출발/도착 지정 가능)
+  const safetyMarkers = useMemo(() => {
+    const list = []
+    if (safety.layers.cctv) {
+      const { color, icon } = SAFETY_LAYER_STYLE.cctv
+      for (const c of safety.cctvs) {
+        list.push({
+          id: `cctv-${c.id}`,
+          lat: c.latitude,
+          lng: c.longitude,
+          title: `CCTV (${c.purpose}${c.cameraCount > 1 ? `, ${c.cameraCount}대` : ''})`,
+          color,
+          icon,
+          size: 16,
+          subtle: true,
+          maxLevel: CCTV_MAX_LEVEL,
+        })
+      }
+    }
+    if (!safety.tooWide) {
+      for (const type of FACILITY_TYPES) {
+        if (!safety.layers[type]) continue
+        const { color, icon } = SAFETY_LAYER_STYLE[type]
+        for (const f of safety.facilities[type]) {
+          list.push({
+            id: `${type}-${f.placeUrl ?? `${f.latitude},${f.longitude}`}`,
+            lat: f.latitude,
+            lng: f.longitude,
+            title: f.placeName,
+            color,
+            icon,
+            size: 18,
+            subtle: true,
+            onClick: () => search.onSelect(f, { fromMap: true }),
+          })
+        }
+      }
+    }
+    return list
+    // search.onSelect는 마커를 누를 때만 쓰므로 목록을 다시 만들 이유가 아니다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [safety.layers, safety.cctvs, safety.facilities, safety.tooWide])
+
   // 보행로 그래프 노드(교차로)는 경로 계산에만 쓰고 지도에는 표시하지 않는다
   const streetLightMarkers = useMemo(
     () =>
@@ -494,10 +590,9 @@ export default function MapPage() {
     setNearbyOpen(true)
   }
 
-  // 지도 화면 사용 안내: 검색창 아래 안내 카드 + 코치마크(처음 접속 시 자동, "?" 버튼으로 다시 보기)
+  // 지도 화면 사용 안내: 코치마크(처음 접속 시 자동, "?" 버튼으로 다시 보기) + 아래쪽 빠른 출발 시트
   const { mode: tutorialMode, replayHint } = useTutorial()
   const searchWrapRef = useRef(null)
-  const [guideHidden, setGuideHidden] = useState(() => readFlag(MAP_GUIDE_HIDDEN_KEY))
   // 자동으로 띄울지: "다시 표시 안 함"을 체크하고 닫은 적이 없고, 이번 접속에 아직 닫지 않았을 때
   const [coachAuto, setCoachAuto] = useState(() => !readFlag(COACH_MARKS_SEEN_KEY) && !coachClosedThisVisit)
   const [coachReplay, setCoachReplay] = useState(false) // "?" 버튼으로 연 경우 (다시 표시 안 함과 상관없이 연다)
@@ -505,11 +600,6 @@ export default function MapPage() {
   const idle = !start && !end && !reportMode && !bottomSheetOpen && !editingPoint
   // 자동 표시는 7단계 가이드 모달과 닫은 직후의 "다시 볼 수 있어요" 안내가 다 사라진 뒤에 이어서 띄운다
   const showCoachMarks = coachReplay || (coachAuto && idle && tutorialMode === null && !replayHint)
-
-  const hideGuide = () => {
-    saveFlag(MAP_GUIDE_HIDDEN_KEY)
-    setGuideHidden(true)
-  }
 
   const closeCoachMarks = useCallback((dontShowAgain) => {
     if (dontShowAgain) saveFlag(COACH_MARKS_SEEN_KEY)
@@ -519,6 +609,64 @@ export default function MapPage() {
   }, [])
 
   const focusSearch = () => searchWrapRef.current?.querySelector('input')?.focus()
+
+  // 빠른 출발: 즐겨찾기 → 최근 길찾기 목적지 순으로 최대 3곳 (같은 장소는 한 번만)
+  const quickDestinations = useMemo(() => {
+    const list = []
+    const already = (place) => list.some((d) => isSamePlace({ latitude: d.place.lat, longitude: d.place.lng }, place))
+    for (const f of favorites) {
+      if (list.length >= QUICK_DESTINATION_COUNT) break
+      const place = { lat: f.latitude, lng: f.longitude, title: f.label, address: f.address }
+      if (!already(place)) list.push({ key: `fav-${f.id}`, icon: favoriteIcon(f.label), label: f.label, place })
+    }
+    for (const item of routeHistory.items) {
+      if (list.length >= QUICK_DESTINATION_COUNT) break
+      const place = item.end
+      if (place.fromMyLocation || already(place)) continue
+      list.push({ key: `history-${routeHistoryKey(item)}`, icon: '🕘', label: place.title ?? '최근 목적지', place })
+    }
+    return list
+  }, [favorites, routeHistory.items])
+
+  // 현재 위치 → 그 장소. 최근 길찾기에서 "현재 위치에서 출발" 기록을 누를 때와 같다:
+  // 출발지를 비우고 도착지만 정하면 위 이펙트가 현재 위치를 출발지로 채워 경로를 찾는다.
+  // 현재 위치가 없으면 아래 안내 바에 "출발지를 검색하세요"가 뜨고, 바로 검색창으로 보낸다
+  const goToDestination = (place) => {
+    setStart(null)
+    setEnd({ id: 'place-end', lat: place.lat, lng: place.lng, title: place.title, address: place.address })
+    if (!myLocation) focusSearch()
+  }
+
+  // ⚠ 제보 버튼: 현재 위치가 있으면 "지금 내 위치 / 지도에서 고르기" 메뉴를 띄우고, 없으면 바로 기존 제보 모드.
+  // 제보 모드 중에 누르면 지금처럼 제보 모드를 끈다
+  const [reportMenuOpen, setReportMenuOpen] = useState(false)
+  const showReportMenu = reportMenuOpen && !reportMode && !bottomSheetOpen
+
+  const handleReportButton = () => {
+    if (reportMode) setReportMode(false)
+    else if (myLocation) setReportMenuOpen((open) => !open)
+    else setReportMode(true)
+  }
+
+  // "지금 내 위치 제보": 지도를 눌러 위치를 고른 것과 같이 제보 창을 연다
+  const reportAtMyLocation = () => {
+    setReportMenuOpen(false)
+    if (myLocation) setPendingLocation({ lat: myLocation.lat, lng: myLocation.lng })
+  }
+
+  const reportOnMap = () => {
+    setReportMenuOpen(false)
+    setReportMode(true)
+  }
+
+  useEffect(() => {
+    if (!showReportMenu) return
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setReportMenuOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [showReportMenu])
 
   // 목록에서 제보를 누르면 목록은 내려가고, 지도를 그 위치로 옮겨 핀을 꽂은 뒤 아래쪽 카드로 내용·사진을 보여준다.
   // 카드가 화면 아래쪽을 차지하므로 제보 위치는 화면 위쪽에 오게 옮긴다. 카드를 닫으면 목록으로 돌아간다
@@ -608,7 +756,8 @@ export default function MapPage() {
 
   const allMarkers = useMemo(
     () => [
-      ...streetLightMarkers,
+      ...(safety.layers.streetlight ? streetLightMarkers : []), // 가로등 칩을 끄면 숨긴다 (경로 위험도 계산과는 무관)
+      ...safetyMarkers, // 제보 마커보다 먼저 그려 아래에 깔리게
       ...surveyedCrosswalkMarkers,
       ...reportMarkers,
       ...crossingMarkers,
@@ -617,7 +766,9 @@ export default function MapPage() {
       ...nearbyFocusMarkers,
     ],
     [
+      safety.layers.streetlight,
       streetLightMarkers,
+      safetyMarkers,
       surveyedCrosswalkMarkers,
       reportMarkers,
       crossingMarkers,
@@ -721,6 +872,7 @@ export default function MapPage() {
         paths={paths}
         onMapClick={handleMapClick}
         onCenterChange={setMapCenter}
+        onBoundsChange={setMapBounds}
         crosshair={reportMode}
         focus={focus}
         myLocation={myLocation}
@@ -820,6 +972,7 @@ export default function MapPage() {
           <div ref={searchWrapRef} data-coach="search" style={{ flex: 1, minWidth: 0, display: 'flex' }}>
           <PlaceSearchBar
             search={search}
+            placeholder={isNightTime() ? '🌙 밤길이에요. 어디로 갈까요?' : '어디로 갈까요? 장소, 주소 검색'}
             history={{
               items: routeHistory.items,
               // 최근 길찾기를 누르면 그 출발→도착을 그대로 다시 찾는다 (경로는 자동으로 계산됨)
@@ -858,23 +1011,12 @@ export default function MapPage() {
         )}
       </div>
 
-      {/* 처음 보는 사람을 위한 한 줄 안내 + 바로가기 칩. 주변 제보·즐겨찾기 버튼 줄(top 72~116) 바로 아래 */}
-      {idle && !guideHidden && (
-        <MapGuide
-          top={124}
-          onSearch={focusSearch}
-          onNearby={openNearbyReports}
-          onReport={() => setReportMode(true)}
-          onClose={hideGuide}
-        />
-      )}
-
       {reportMode && (
         <div
           style={{
             position: 'absolute',
             zIndex: 10,
-            top: 64,
+            top: 104, // 칩 줄(top 64~96) 아래, 즐겨찾기 별 자리 (제보 모드에서는 별을 숨긴다)
             left: 12,
             right: 12,
             background: colors.navy,
@@ -951,8 +1093,8 @@ export default function MapPage() {
             left: 12,
             right: 84,
             // 장소 정보 카드·주변 제보가 떠 있을 때는 자리를 내준다.
-            // 아무것도 정하지 않은 처음 상태의 안내는 위쪽 안내 카드(MapGuide)가 맡으므로, 여기는 진행 상황(출발/도착 하나만 정함·경로 찾는 중·오류)만 보여준다
-            display: bottomSheetOpen || (!error && !start && !end) ? 'none' : 'flex',
+            // 출발/도착을 하나도 정하지 않은 처음 상태는 같은 자리의 빠른 출발 시트가 맡으므로, 여기는 진행 상황(출발/도착 하나만 정함·경로 찾는 중·오류)만 보여준다
+            display: bottomSheetOpen || (!start && !end) ? 'none' : 'flex',
             alignItems: 'flex-start',
             gap: 8,
             background: colors.white,
@@ -971,7 +1113,7 @@ export default function MapPage() {
                   ? `출발: ${start.title ?? '선택한 지점'} · 도착지를 검색하세요`
                   : end
                     ? `도착: ${end.title ?? '선택한 지점'} · 출발지를 검색하세요`
-                    : '장소를 검색해 출발지를 정하세요')}
+                    : null)}
           </div>
           {/* 출발/도착 중 하나만 정했을 때의 취소 버튼 (둘 다 정하면 위쪽 "출발 → 도착" 바의 ✕를 쓴다) */}
           {(start || end) && !(start && end) && (
@@ -982,57 +1124,41 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* 주변 제보 버튼. 검색창 바로 아래 왼쪽 (오른쪽 즐겨찾기 별 버튼과 같은 줄, 검색 결과 목록이 펼쳐지면 그 아래로 가려진다).
-          제보 모드에서는 같은 자리에 안내 띠가 뜨므로 숨긴다 */}
-      {!reportMode && (
-        <button
-          type="button"
-          onClick={nearbyActive ? closeNearby : openNearbyReports}
-          aria-pressed={nearbyActive}
-          data-coach="nearby"
-          // 배경·글자색·hover·전환 효과는 index.css의 .map-fab (닫힘: 반투명 흰색, 열림: 남색)
-          className={`map-fab${nearbyActive ? ' is-active' : ''}`}
-          style={{
-            position: 'absolute',
-            zIndex: 9,
-            top: 72,
-            left: 12,
-            height: 40,
-            padding: '0 14px',
-            borderRadius: 20,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            fontSize: 14,
-            fontWeight: 700,
-            cursor: 'pointer',
-          }}
-        >
-          주변 제보
-          <span
-            className="map-fab-badge"
-            style={{
-              minWidth: 22,
-              height: 22,
-              padding: '0 6px',
-              borderRadius: 11,
-              // 개수 배지: 제보가 있으면 빨간 바탕(위험색), 없으면 흐리게 (닫힘 상태의 흰 버튼 위에서도 보이도록 남색 계열)
-              background:
-                nearbyReports.length > 0 ? colors.red : nearbyActive ? `${colors.white}33` : `${colors.navy}99`,
-              color: colors.white,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 12,
-              boxSizing: 'border-box',
-            }}
-          >
-            {nearbyReports.length}
-          </span>
-        </button>
+      {/* 빠른 출발: 처음 상태(출발/도착 없음, 장소·주변 제보 카드 없음, 제보 모드 아님)에서만 아래 안내 바 자리에 띄운다.
+          경로를 찾기 시작하면 위 안내 바·경로 카드가 같은 자리를 이어받는다 */}
+      {idle && (
+        <QuickStartSheet
+          style={{ position: 'absolute', zIndex: 10, bottom: 16, left: 12, right: 84 }}
+          destinations={quickDestinations.map((d) => ({ ...d, onClick: () => goToDestination(d.place) }))}
+          error={error}
+        />
       )}
 
-      {/* 즐겨찾기 별 표시/숨기기. 검색창 바로 아래 오른쪽 (검색 결과 목록이 펼쳐지면 그 아래로 가려진다).
+      {/* 안전시설 필터 칩 줄: 검색창 바로 아래 (top 64, 높이 32). 장소 카드·경로 안내 중에도 유지하고,
+          검색 결과 목록이 펼쳐지면 그 아래로 가려진다. 마지막 ⚠ 제보 칩이 예전 "주변 제보" 버튼을 대신한다 */}
+      <SafetyChips
+        style={{ position: 'absolute', zIndex: 9, top: 64, left: 12, right: 12 }}
+        layers={safety.layers}
+        onToggle={toggleLayer}
+        unavailable={{ cctv: cctvUnavailable }}
+        onUnavailable={() => setMapHint('CCTV 데이터 준비 중이에요')}
+        reports={{
+          count: nearbyReports.length,
+          active: nearbyActive,
+          onClick: nearbyActive ? closeNearby : openNearbyReports,
+        }}
+      />
+      {mapHint && (
+        <div
+          role="status"
+          className="map-hint-toast"
+          style={{ position: 'absolute', zIndex: 9, top: 108, left: '50%', transform: 'translateX(-50%)' }}
+        >
+          {mapHint}
+        </div>
+      )}
+
+      {/* 즐겨찾기 별 표시/숨기기. 칩 줄 바로 아래 오른쪽 (검색 결과 목록이 펼쳐지면 그 아래로 가려진다).
           제보 모드에서는 같은 자리에 안내 띠가 뜨므로 숨긴다 */}
       {!reportMode && (
         <button
@@ -1044,7 +1170,7 @@ export default function MapPage() {
           style={{
             position: 'absolute',
             zIndex: 9,
-            top: 72,
+            top: 104, // 검색창 아래 칩 줄(top 64~96) 밑
             right: 16,
             width: 44,
             height: 44,
@@ -1111,10 +1237,12 @@ export default function MapPage() {
       {!bottomSheetOpen && (
         <button
           type="button"
-          onClick={() => setReportMode((v) => !v)}
+          onClick={handleReportButton}
           data-coach="report"
-          // 제보 위치 고르는 중이면 남색(켜짐), 아니면 반투명 (index.css .map-fab)
-          className={`map-fab${reportMode ? ' is-active' : ''}`}
+          aria-haspopup={myLocation && !reportMode ? 'menu' : undefined}
+          aria-expanded={myLocation && !reportMode ? showReportMenu : undefined}
+          // 제보 위치 고르는 중이거나 메뉴가 열려 있으면 남색(켜짐), 아니면 반투명 (index.css .map-fab)
+          className={`map-fab${reportMode || showReportMenu ? ' is-active' : ''}`}
           style={{
             position: 'absolute',
             zIndex: 10, // 카카오맵 내부 레이어보다 위에 표시
@@ -1147,6 +1275,22 @@ export default function MapPage() {
             </svg>
           )}
         </button>
+      )}
+
+      {showReportMenu && (
+        <>
+          {/* 바깥(지도·⚠ 버튼 포함)을 누르면 메뉴만 닫힌다 */}
+          <div onClick={() => setReportMenuOpen(false)} style={{ position: 'absolute', inset: 0, zIndex: 11 }} />
+          {/* ⚠ 버튼(bottom 16, 높이 52) 바로 위로 펼친다. 열려 있는 동안은 위쪽 내 위치 버튼을 잠시 덮는다 */}
+          <div role="menu" aria-label="제보 방법" className="report-menu" style={{ position: 'absolute', zIndex: 12, bottom: 76, right: 16 }}>
+            <button type="button" role="menuitem" onClick={reportAtMyLocation} className="report-menu-item">
+              📍 지금 내 위치 제보
+            </button>
+            <button type="button" role="menuitem" onClick={reportOnMap} className="report-menu-item">
+              🗺 지도에서 위치 고르기
+            </button>
+          </div>
+        </>
       )}
 
       <PlaceSheet

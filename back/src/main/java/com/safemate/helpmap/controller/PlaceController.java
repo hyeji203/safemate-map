@@ -27,6 +27,27 @@ public class PlaceController {
         return kakaoLocalService.searchKeyword(query);
     }
 
+    // 안전시설 레이어 검색을 허용하는 지도 범위(위도·경도 각 변의 길이, 도). 약 3km. 이보다 넓으면 카카오를 호출하지 않는다
+    private static final double FACILITY_MAX_SPAN_DEGREES = 0.03;
+
+    /**
+     * 지금 보이는 지도 범위 안의 안전시설 (지도 화면 안전시설 레이어).
+     * type: convenience(편의점) | police(파출소·지구대). 범위가 너무 넓으면 빈 목록 (프론트는 확대 안내를 띄운다)
+     */
+    @GetMapping("/facilities")
+    public ResponseEntity<List<PlaceResponse>> facilities(@RequestParam String type,
+                                                          @RequestParam double swLat, @RequestParam double swLng,
+                                                          @RequestParam double neLat, @RequestParam double neLng) {
+        if (!type.equals("convenience") && !type.equals("police")) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (neLat <= swLat || neLng <= swLng
+                || neLat - swLat > FACILITY_MAX_SPAN_DEGREES || neLng - swLng > FACILITY_MAX_SPAN_DEGREES) {
+            return ResponseEntity.ok(List.of());
+        }
+        return ResponseEntity.ok(kakaoLocalService.searchFacilities(type, swLat, swLng, neLat, neLng));
+    }
+
     /** 지도에서 누른 좌표의 장소 이름·주소. 주소도 없는 곳이면 204 */
     @GetMapping("/at")
     public ResponseEntity<PlaceResponse> findAt(@RequestParam double lat, @RequestParam double lng) {

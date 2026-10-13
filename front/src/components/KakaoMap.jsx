@@ -33,6 +33,7 @@ function loadKakaoMapSdk() {
  *   style: 카카오맵 선 모양(strokeStyle). 기본 'solid'
  * - onMapClick: 마커가 아닌 빈 지도 영역을 클릭했을 때 좌표 콜백 (장소 이름 보기, 제보 위치 선택)
  * - onCenterChange: 지도 이동·확대가 끝날 때마다 지도 가운데 좌표 { lat, lng } 콜백 (처음 생성될 때도 한 번 호출)
+ * - onBoundsChange: 지도 이동·확대가 끝날 때마다 지금 보이는 범위 { swLat, swLng, neLat, neLng, level } 콜백 (처음 생성될 때도 한 번 호출)
  * - crosshair: true면 커서를 십자 모양으로 바꾼다 (제보 위치 선택 중 표시용)
  * - focus: { lat, lng, level?, offsetY? } 이 값이 바뀔 때마다 지도를 그 위치로 이동한다 (검색한 장소 보여주기용)
  *   offsetY(px)를 주면 그 위치를 가운데보다 그만큼 위에 둔다 (아래쪽 카드에 가리지 않게)
@@ -48,6 +49,7 @@ export default function KakaoMap({
   paths = [],
   onMapClick,
   onCenterChange,
+  onBoundsChange,
   crosshair = false,
   focus,
   myLocation,
@@ -324,6 +326,21 @@ export default function KakaoMap({
     window.kakao.maps.event.addListener(map, 'idle', handleIdle)
     return () => window.kakao.maps.event.removeListener(map, 'idle', handleIdle)
   }, [mapReady, onCenterChange])
+
+  // 지도 이동·확대가 끝날 때마다(idle) 지금 보이는 범위를 전달한다 (안전시설 레이어가 이 범위만 검색)
+  useEffect(() => {
+    if (!mapReady || !onBoundsChange) return
+    const map = mapRef.current
+    const handleIdle = () => {
+      const b = map.getBounds()
+      const sw = b.getSouthWest()
+      const ne = b.getNorthEast()
+      onBoundsChange({ swLat: sw.getLat(), swLng: sw.getLng(), neLat: ne.getLat(), neLng: ne.getLng(), level: map.getLevel() })
+    }
+    handleIdle()
+    window.kakao.maps.event.addListener(map, 'idle', handleIdle)
+    return () => window.kakao.maps.event.removeListener(map, 'idle', handleIdle)
+  }, [mapReady, onBoundsChange])
 
   // 지도 빈 공간 클릭 시 좌표 전달 (마커 클릭은 각 마커 자체의 onClick이 처리하므로 서로 안 겹침)
   useEffect(() => {

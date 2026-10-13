@@ -7,7 +7,7 @@ import { routeHistoryKey } from '../hooks/useRouteHistory'
  * - search: usePlaceSearch() 반환값
  * - history: 최근 길찾기 { items, onPick, onRemove, onClear } (선택). 검색창을 눌렀는데 입력한 글자가 없으면 목록을 띄운다
  */
-export default function PlaceSearchBar({ search, history }) {
+export default function PlaceSearchBar({ search, history, placeholder = '장소, 주소 검색' }) {
   const { query, selected, onQueryChange, onSelect, reset } = search
   const [focused, setFocused] = useState(false)
   const showHistory = focused && !query && !selected && history?.items.length > 0
@@ -28,7 +28,7 @@ export default function PlaceSearchBar({ search, history }) {
           🔍
         </span>
         <input
-          placeholder="장소, 주소 검색"
+          placeholder={placeholder}
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           onFocus={() => setFocused(true)}
