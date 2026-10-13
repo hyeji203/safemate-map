@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { colors } from '../styles/colors'
 import { routeHistoryKey } from '../hooks/useRouteHistory'
 
@@ -6,11 +6,26 @@ import { routeHistoryKey } from '../hooks/useRouteHistory'
  * 지도 상단 장소 검색창. 입력하면 아래로 검색 결과 목록이 펼쳐지고, 하나를 고르면 search.selected가 채워진다.
  * - search: usePlaceSearch() 반환값
  * - history: 최근 길찾기 { items, onPick, onRemove, onClear } (선택). 검색창을 눌렀는데 입력한 글자가 없으면 목록을 띄운다
+ * - hints: 안내 문구 배열 (선택). 주면 placeholder 대신 입력칸 위에 겹친 글자로 HINT_INTERVAL_MS마다 돌려 보여준다.
+ *   검색창을 누르거나 글자를 입력하면 멈추고, 비운 채로 포커스가 빠지면 다시 돈다. 스크린리더에는 "장소, 주소 검색"으로 고정해 읽힌다
  */
-export default function PlaceSearchBar({ search, history, placeholder = '장소, 주소 검색' }) {
+const HINT_INTERVAL_MS = 3500
+const SEARCH_LABEL = '장소, 주소 검색'
+
+export default function PlaceSearchBar({ search, history, placeholder = SEARCH_LABEL, hints }) {
   const { query, selected, onQueryChange, onSelect, reset } = search
   const [focused, setFocused] = useState(false)
   const showHistory = focused && !query && !selected && history?.items.length > 0
+
+  // 안내 문구 돌리기. 다른 화면으로 가서 이 검색창이 사라지면 타이머도 정리된다
+  const [hintIndex, setHintIndex] = useState(0)
+  const hintCount = hints?.length ?? 0
+  const rotating = hintCount > 1 && !focused && !query
+  useEffect(() => {
+    if (!rotating) return
+    const timer = setInterval(() => setHintIndex((i) => (i + 1) % hintCount), HINT_INTERVAL_MS)
+    return () => clearInterval(timer)
+  }, [rotating, hintCount])
 
   return (
     <div style={{ position: 'relative', flex: 1 }}>
@@ -27,8 +42,10 @@ export default function PlaceSearchBar({ search, history, placeholder = '장소,
         <span style={{ fontSize: 16, marginRight: 8 }} aria-hidden>
           🔍
         </span>
+        <div style={{ position: 'relative', flex: 1, minWidth: 0, display: 'flex' }}>
         <input
-          placeholder={placeholder}
+          placeholder={hintCount > 0 ? '' : placeholder}
+          aria-label={hintCount > 0 ? SEARCH_LABEL : undefined}
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           onFocus={() => setFocused(true)}
@@ -45,6 +62,15 @@ export default function PlaceSearchBar({ search, history, placeholder = '장소,
             background: 'transparent',
           }}
         />
+        {hintCount > 0 && !query && (
+          // 입력칸 위에 겹친 안내 문구 (누르면 아래 입력칸이 눌리게 pointer-events: none). 바뀔 때마다 위로 살짝 올라오며 나타난다
+          <span aria-hidden className="search-hint-box">
+            <span key={hintIndex} className="search-hint">
+              {hints[hintIndex % hintCount]}
+            </span>
+          </span>
+        )}
+        </div>
         {query && (
           <button type="button" onClick={reset} aria-label="검색어 지우기" style={clearButtonStyle}>
             ✕
