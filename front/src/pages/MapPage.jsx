@@ -91,6 +91,17 @@ function favoriteIcon(label = '') {
 // 오후 6시 ~ 오전 6시는 검색창 안내 문구를 밤길용으로
 const isNightTime = (date = new Date()) => date.getHours() >= 18 || date.getHours() < 6
 
+// 검색창에 차례대로 돌려 보여주는 안내 문구. 개인 검색 기록·장소 이름은 넣지 않는다
+const SEARCH_HINTS = [
+  '목적지를 검색하면 안심경로를 알려드려요',
+  '어두운 길은 피해서 안내해 드려요',
+  '자주 가는 곳은 ☆로 저장해 보세요',
+  '위험한 곳은 ⚠ 버튼으로 제보해요',
+]
+// 밤에는 첫 문구를 밤길 안내로 바꿔서 시작한다
+const searchHints = () =>
+  isNightTime() ? ['🌙 밤길이에요. 목적지를 검색해 보세요', ...SEARCH_HINTS.slice(1)] : SEARCH_HINTS
+
 // 코치마크 순서 (target은 강조할 요소의 data-coach 값. 하단 탭은 BottomNav의 알림·마이페이지 탭)
 const COACH_STEPS = [
   {
@@ -972,7 +983,7 @@ export default function MapPage() {
           <div ref={searchWrapRef} data-coach="search" style={{ flex: 1, minWidth: 0, display: 'flex' }}>
           <PlaceSearchBar
             search={search}
-            placeholder={isNightTime() ? '🌙 밤길이에요. 어디로 갈까요?' : '어디로 갈까요? 장소, 주소 검색'}
+            hints={searchHints()}
             history={{
               items: routeHistory.items,
               // 최근 길찾기를 누르면 그 출발→도착을 그대로 다시 찾는다 (경로는 자동으로 계산됨)
