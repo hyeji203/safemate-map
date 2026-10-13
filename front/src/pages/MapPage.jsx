@@ -11,6 +11,9 @@ import { useNotifications } from '../hooks/useNotifications'
 import ReportModal from '../components/ReportModal'
 import ReportDetail from '../components/ReportDetail'
 import NearbyReportsSheet from '../components/NearbyReportsSheet'
+import MapGuide from '../components/MapGuide'
+import CoachMarks from '../components/CoachMarks'
+import { useTutorial } from '../hooks/useTutorial'
 import { haversineMeters } from '../utils/geo'
 import { reportApi } from '../api/reportApi'
 import { favoriteApi } from '../api/favoriteApi'
@@ -40,6 +43,63 @@ function isSamePlace(favorite, place) {
 
 // 지도에 즐겨찾기 별을 표시할지 기억해 두는 localStorage 키 (장소 좌표가 아니라 켜짐/꺼짐만 저장)
 const SHOW_FAVORITES_KEY = 'safemate_show_favorites'
+
+// 검색창 아래 사용 안내 카드를 X로 닫았는지 / 첫 방문 코치마크(버튼 말풍선)를 봤는지. 둘 다 이 브라우저에만 기억한다
+const MAP_GUIDE_HIDDEN_KEY = 'safemate_map_guide_hidden'
+const COACH_MARKS_SEEN_KEY = 'safemate_coach_marks_seen'
+
+function readFlag(key) {
+  try {
+    return localStorage.getItem(key) === '1'
+  } catch {
+    return false
+  }
+}
+
+function saveFlag(key) {
+  try {
+    localStorage.setItem(key, '1')
+  } catch {
+    // 저장이 막혀 있으면 이번 화면에서만 적용된다
+  }
+}
+
+// 코치마크 순서 (target은 강조할 요소의 data-coach 값. 하단 탭은 BottomNav의 알림·마이페이지 탭)
+const COACH_STEPS = [
+  {
+    target: 'search',
+    title: '목적지를 검색해 보세요',
+    text: '도착지를 고르면 안심경로와 최단경로를 함께 비교해 드려요.',
+  },
+  {
+    target: 'nearby',
+    title: '주변 제보',
+    text: `내 주변 ${NEARBY_REPORT_RADIUS_LABEL} 안의 위험 제보를 가까운 순으로 볼 수 있어요.`,
+  },
+  {
+    target: 'favorites',
+    title: '즐겨찾기',
+    text: '자주 가는 곳을 저장해 두면 지도에 별로 표시돼 빠르게 찾을 수 있어요.',
+  },
+  {
+    target: 'locate',
+    title: '내 위치로 이동',
+    text: '지도를 내 현재 위치로 다시 옮겨요.',
+  },
+  {
+    target: 'report',
+    title: '위험구간 제보',
+    text: '어두운 골목, 고장 난 가로등을 발견하면 눌러서 지도에서 위치를 고르고 제보해 주세요.',
+  },
+  {
+    target: 'tabs',
+    title: '알림 · 마이페이지',
+    text: '놓친 새 제보 알림과 내 제보·정보는 아래 탭에서 확인해요.',
+  },
+]
+
+// "다시 표시 안 함" 없이 닫았을 때, 이번 접속(새로고침 전)에는 다른 탭에 갔다 와도 다시 띄우지 않는다
+let coachClosedThisVisit = false
 
 // 횡단보도 좌표 찍기 모드: 개발 모드에서 루트 .env에 REACT_APP_CROSSWALK_SURVEY=true 를 넣었을 때만 켜진다.
 // 시연 때 개발 서버(npm run dev)로 띄워도 줄 번호 마커·좌표 안내가 보이지 않도록 기본은 꺼 둔다. 배포 빌드에는 들어가지 않는다.
@@ -434,6 +494,32 @@ export default function MapPage() {
     setNearbyOpen(true)
   }
 
+  // 지도 화면 사용 안내: 검색창 아래 안내 카드 + 코치마크(처음 접속 시 자동, "?" 버튼으로 다시 보기)
+  const { mode: tutorialMode, replayHint } = useTutorial()
+  const searchWrapRef = useRef(null)
+  const [guideHidden, setGuideHidden] = useState(() => readFlag(MAP_GUIDE_HIDDEN_KEY))
+  // 자동으로 띄울지: "다시 표시 안 함"을 체크하고 닫은 적이 없고, 이번 접속에 아직 닫지 않았을 때
+  const [coachAuto, setCoachAuto] = useState(() => !readFlag(COACH_MARKS_SEEN_KEY) && !coachClosedThisVisit)
+  const [coachReplay, setCoachReplay] = useState(false) // "?" 버튼으로 연 경우 (다시 표시 안 함과 상관없이 연다)
+  // 아무것도 안 하고 지도만 보고 있는 상태 (경로·제보 모드·아래 카드·출발/도착 변경 중이 아님)
+  const idle = !start && !end && !reportMode && !bottomSheetOpen && !editingPoint
+  // 자동 표시는 7단계 가이드 모달과 닫은 직후의 "다시 볼 수 있어요" 안내가 다 사라진 뒤에 이어서 띄운다
+  const showCoachMarks = coachReplay || (coachAuto && idle && tutorialMode === null && !replayHint)
+
+  const hideGuide = () => {
+    saveFlag(MAP_GUIDE_HIDDEN_KEY)
+    setGuideHidden(true)
+  }
+
+  const closeCoachMarks = useCallback((dontShowAgain) => {
+    if (dontShowAgain) saveFlag(COACH_MARKS_SEEN_KEY)
+    coachClosedThisVisit = true
+    setCoachAuto(false)
+    setCoachReplay(false)
+  }, [])
+
+  const focusSearch = () => searchWrapRef.current?.querySelector('input')?.focus()
+
   // 목록에서 제보를 누르면 목록은 내려가고, 지도를 그 위치로 옮겨 핀을 꽂은 뒤 아래쪽 카드로 내용·사진을 보여준다.
   // 카드가 화면 아래쪽을 차지하므로 제보 위치는 화면 위쪽에 오게 옮긴다. 카드를 닫으면 목록으로 돌아간다
   const showNearbyReport = (report) => {
@@ -731,6 +817,7 @@ export default function MapPage() {
             {editingPoint && <PlaceResults search={search} onSelect={applyEditedPoint} />}
           </div>
         ) : (
+          <div ref={searchWrapRef} data-coach="search" style={{ flex: 1, minWidth: 0, display: 'flex' }}>
           <PlaceSearchBar
             search={search}
             history={{
@@ -745,8 +832,42 @@ export default function MapPage() {
               onClear: routeHistory.clear,
             }}
           />
+          </div>
+        )}
+        {/* 도움말: 화면 사용법(코치마크)을 1단계부터 다시 본다. 경로 바(출발 → 도착)가 떠 있을 때는 이름 칸이 좁아지지 않게 숨긴다.
+            7단계 사용 가이드 모달은 마이페이지에서 다시 볼 수 있다 */}
+        {!(start && end) && (
+          <button
+            type="button"
+            onClick={() => setCoachReplay(true)}
+            className="map-fab"
+            aria-label="화면 사용법 다시 보기"
+            title="화면 사용법"
+            style={{
+              width: 44,
+              flexShrink: 0,
+              borderRadius: 22,
+              padding: 0,
+              fontSize: 18,
+              fontWeight: 800,
+              cursor: 'pointer',
+            }}
+          >
+            ?
+          </button>
         )}
       </div>
+
+      {/* 처음 보는 사람을 위한 한 줄 안내 + 바로가기 칩. 주변 제보·즐겨찾기 버튼 줄(top 72~116) 바로 아래 */}
+      {idle && !guideHidden && (
+        <MapGuide
+          top={124}
+          onSearch={focusSearch}
+          onNearby={openNearbyReports}
+          onReport={() => setReportMode(true)}
+          onClose={hideGuide}
+        />
+      )}
 
       {reportMode && (
         <div
@@ -829,7 +950,9 @@ export default function MapPage() {
             bottom: 16,
             left: 12,
             right: 84,
-            display: bottomSheetOpen ? 'none' : 'flex', // 장소 정보 카드·주변 제보가 떠 있을 때는 자리를 내준다
+            // 장소 정보 카드·주변 제보가 떠 있을 때는 자리를 내준다.
+            // 아무것도 정하지 않은 처음 상태의 안내는 위쪽 안내 카드(MapGuide)가 맡으므로, 여기는 진행 상황(출발/도착 하나만 정함·경로 찾는 중·오류)만 보여준다
+            display: bottomSheetOpen || (!error && !start && !end) ? 'none' : 'flex',
             alignItems: 'flex-start',
             gap: 8,
             background: colors.white,
@@ -866,6 +989,9 @@ export default function MapPage() {
           type="button"
           onClick={nearbyActive ? closeNearby : openNearbyReports}
           aria-pressed={nearbyActive}
+          data-coach="nearby"
+          // 배경·글자색·hover·전환 효과는 index.css의 .map-fab (닫힘: 반투명 흰색, 열림: 남색)
+          className={`map-fab${nearbyActive ? ' is-active' : ''}`}
           style={{
             position: 'absolute',
             zIndex: 9,
@@ -874,29 +1000,25 @@ export default function MapPage() {
             height: 40,
             padding: '0 14px',
             borderRadius: 20,
-            // 평소에는 즐겨찾기·현재 위치·제보 버튼과 같은 남색. 눌린 상태(목록이나 거기서 고른 제보가 떠 있음)는
-            // 흰 바탕 + 남색 글씨·테두리로 반전해 한눈에 구분되게 한다
-            border: `2px solid ${nearbyActive ? colors.navy : 'transparent'}`,
-            background: nearbyActive ? colors.white : colors.navy,
-            color: nearbyActive ? colors.navy : colors.white,
             display: 'flex',
             alignItems: 'center',
             gap: 6,
             fontSize: 14,
             fontWeight: 700,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
             cursor: 'pointer',
           }}
         >
           주변 제보
           <span
+            className="map-fab-badge"
             style={{
               minWidth: 22,
               height: 22,
               padding: '0 6px',
               borderRadius: 11,
-              // 개수 배지: 제보가 있으면 빨간 바탕(위험색), 없으면 흐리게
-              background: nearbyReports.length > 0 ? colors.red : `${colors.white}33`,
+              // 개수 배지: 제보가 있으면 빨간 바탕(위험색), 없으면 흐리게 (닫힘 상태의 흰 버튼 위에서도 보이도록 남색 계열)
+              background:
+                nearbyReports.length > 0 ? colors.red : nearbyActive ? `${colors.white}33` : `${colors.navy}99`,
               color: colors.white,
               display: 'inline-flex',
               alignItems: 'center',
@@ -916,6 +1038,9 @@ export default function MapPage() {
         <button
           type="button"
           onClick={toggleFavorites}
+          data-coach="favorites"
+          // 즐겨찾기 별을 지도에 띄운 상태면 남색(켜짐), 아니면 반투명 (index.css .map-fab)
+          className={`map-fab${showFavorites ? ' is-active' : ''}`}
           style={{
             position: 'absolute',
             zIndex: 9,
@@ -924,23 +1049,20 @@ export default function MapPage() {
             width: 44,
             height: 44,
             borderRadius: '50%',
-            border: 'none',
-            background: colors.navy, // 현재 위치·제보 버튼과 같은 남색
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             padding: 0,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
             cursor: 'pointer',
           }}
           aria-label={showFavorites ? '즐겨찾기 숨기기' : '즐겨찾기 표시'}
           aria-pressed={showFavorites}
         >
-          <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
+          <svg className="map-fab-icon" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
             <path
               d="M12 2.5l2.9 6.2 6.6.7-5 4.5 1.4 6.6L12 17.2l-5.9 3.3 1.4-6.6-5-4.5 6.6-.7z"
               fill={showFavorites ? colors.amber : 'none'}
-              stroke={showFavorites ? colors.amber : colors.white}
+              stroke={showFavorites ? colors.amber : 'currentColor'}
               strokeWidth="2"
               strokeLinejoin="round"
             />
@@ -954,6 +1076,9 @@ export default function MapPage() {
           type="button"
           onClick={handleLocateMe}
           disabled={!myLocation}
+          data-coach="locate"
+          // 계속 켜 두는 모드가 없는 버튼이라 누르는 순간(:active)만 남색 (index.css .map-fab)
+          className="map-fab"
           style={{
             position: 'absolute',
             zIndex: 10,
@@ -962,20 +1087,16 @@ export default function MapPage() {
             width: 52,
             height: 52,
             borderRadius: '50%',
-            border: 'none',
-            background: colors.navy,
-            color: colors.white,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             fontSize: 20,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
             cursor: myLocation ? 'pointer' : 'default',
             opacity: myLocation ? 1 : 0.5,
           }}
           aria-label="현재 위치로 이동"
         >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <svg className="map-fab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <circle cx="12" cy="12" r="3" fill="currentColor" />
             <circle cx="12" cy="12" r="7" stroke="currentColor" strokeWidth="2" />
             <line x1="12" y1="1" x2="12" y2="4" stroke="currentColor" strokeWidth="2" />
@@ -991,6 +1112,9 @@ export default function MapPage() {
         <button
           type="button"
           onClick={() => setReportMode((v) => !v)}
+          data-coach="report"
+          // 제보 위치 고르는 중이면 남색(켜짐), 아니면 반투명 (index.css .map-fab)
+          className={`map-fab${reportMode ? ' is-active' : ''}`}
           style={{
             position: 'absolute',
             zIndex: 10, // 카카오맵 내부 레이어보다 위에 표시
@@ -999,14 +1123,10 @@ export default function MapPage() {
             width: 52,
             height: 52,
             borderRadius: '50%',
-            border: 'none',
-            background: reportMode ? colors.red : colors.navy,
-            color: colors.white,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             padding: 0,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
             cursor: 'pointer',
           }}
           aria-label={reportMode ? '제보 취소' : '위험구간 제보'}
@@ -1017,7 +1137,7 @@ export default function MapPage() {
               <path d="M5 5l12 12M17 5L5 17" stroke={colors.white} strokeWidth="2.5" strokeLinecap="round" />
             </svg>
           ) : (
-            <svg width="28" height="26" viewBox="0 0 28 26" aria-hidden="true" style={{ display: 'block' }}>
+            <svg className="map-fab-icon" width="28" height="26" viewBox="0 0 28 26" aria-hidden="true" style={{ display: 'block' }}>
               <path
                 d="M12.27 2a2 2 0 0 1 3.46 0l11 19a2 2 0 0 1-1.73 3H3a2 2 0 0 1-1.73-3z"
                 fill={colors.amber}
@@ -1071,6 +1191,8 @@ export default function MapPage() {
           setPendingLocation(location)
         }}
       />
+
+      {showCoachMarks && <CoachMarks steps={COACH_STEPS} onClose={closeCoachMarks} />}
     </div>
   )
 }

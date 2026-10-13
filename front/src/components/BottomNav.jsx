@@ -26,6 +26,8 @@ export default function BottomNav() {
           key={to}
           to={to}
           end={end}
+          // 지도 화면 코치마크 마지막 단계에서 알림·마이페이지 탭을 함께 비춘다
+          data-coach={to === '/notifications' || to === '/my' ? 'tabs' : undefined}
           className={({ isActive }) =>
             `flex min-w-0 flex-1 flex-col items-center justify-center gap-1 text-xs no-underline ${
               isActive ? 'font-bold text-accent' : 'text-muted'

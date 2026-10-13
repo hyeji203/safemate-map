@@ -35,7 +35,8 @@ export default function ReportToast() {
       <div
         role="status"
         className={`pointer-events-auto flex w-full max-w-[430px] items-start gap-3 rounded-2xl border border-solid bg-card px-4 py-3 shadow-lg ${
-          isReport && n.nearFavorite ? 'border-accent' : 'border-line'
+          // 어두운/밝은 지도 어디서든 팝업 경계가 보이도록 연회색 테두리 (즐겨찾기 근처 제보는 강조색 유지)
+          isReport && n.nearFavorite ? 'border-accent' : 'border-[#D1D5DB]'
         }`}
       >
         {isReport ? (
