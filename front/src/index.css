@@ -48,3 +48,142 @@ body {
     animation: none;
   }
 }
+
+/* 지도 위 플로팅 버튼 공통(주변 제보·즐겨찾기 별·현재 위치·위험구간 제보).
+   평소: 반투명 흰색 + 흐림(지도가 비쳐 보임), 눌림/모드 켜짐(.is-active): 불투명 남색.
+   아이콘은 currentColor를 쓰면 상태에 따라 남색/흰색이 자동으로 바뀐다 */
+.map-fab {
+  border: 1px solid rgba(26, 43, 76, 0.15);
+  background: rgba(255, 255, 255, 0.6);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: rgba(26, 43, 76, 0.8); /* 남색(#1A2B4C) 글씨를 살짝 흐리게. 지도 위에서도 읽히는 정도 */
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.map-fab:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.85);
+  color: #1a2b4c;
+}
+.map-fab.is-active,
+.map-fab:active:not(:disabled) {
+  border-color: transparent;
+  background: #1a2b4c;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.map-fab.is-active:hover {
+  background: #22375f;
+}
+/* 평소 상태의 아이콘·개수 배지는 살짝 흐리게, hover·눌림 상태에서 선명하게 */
+.map-fab-icon {
+  opacity: 0.8;
+  transition: opacity 0.2s ease;
+}
+.map-fab-badge {
+  opacity: 0.55;
+  transition: opacity 0.2s ease;
+}
+.map-fab:hover:not(:disabled) :is(.map-fab-icon, .map-fab-badge),
+.map-fab:active :is(.map-fab-icon, .map-fab-badge),
+.map-fab.is-active :is(.map-fab-icon, .map-fab-badge) {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-fab,
+  .map-fab-icon,
+  .map-fab-badge {
+    transition: none;
+  }
+}
+
+/* 지도 화면 사용 안내 카드(MapGuide). 플로팅 버튼(.map-fab)과 같은 반투명 흰색이라 지도를 덜 가린다 */
+.map-guide {
+  border: 1px solid rgba(26, 43, 76, 0.15);
+  background: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+.map-guide-chip {
+  border: 1px solid rgba(26, 43, 76, 0.25);
+  background: rgba(255, 255, 255, 0.7);
+  color: #1a2b4c;
+  transition: background-color 0.2s ease;
+}
+.map-guide-chip:hover {
+  background: #fff;
+}
+/* 첫 번째(주요) 칩: 남색 바탕 + 노란 글씨 */
+.map-guide-chip.is-primary {
+  border-color: transparent;
+  background: #1a2b4c;
+  color: #ffb020;
+}
+.map-guide-chip.is-primary:hover {
+  background: #22375f;
+}
+
+/* 코치마크: 비추는 버튼만 밝게 남기고 나머지 화면을 어둡게 덮는다 */
+.coach-spot {
+  box-shadow: 0 0 0 200vmax rgba(11, 21, 40, 0.6);
+  outline: 2px solid #ffb020;
+  outline-offset: 0;
+  transition: left 0.25s ease, top 0.25s ease, width 0.25s ease, height 0.25s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-guide-chip,
+  .coach-spot {
+    transition: none;
+  }
+}
+
+/* 코치마크 말풍선: 단계가 바뀌면 위치가 부드럽게 옮겨 가고, 내용은 살짝 떠오르며 나타난다 */
+.coach-bubble {
+  transition: left 0.25s ease, top 0.25s ease;
+  animation: coach-fade 0.2s ease-out;
+}
+.coach-content {
+  animation: coach-fade 0.25s ease-out;
+}
+@keyframes coach-fade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* 말풍선 꼬리. coach-arrow-<placement>: 말풍선이 대상의 어느 쪽에 있는지 (bottom = 대상 아래 → 꼬리는 위를 가리킴) */
+.coach-arrow {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: #1a2b4c;
+  transform: rotate(45deg);
+  margin: -6px;
+}
+.coach-arrow-bottom {
+  top: 0;
+}
+.coach-arrow-top {
+  top: 100%;
+}
+.coach-arrow-right {
+  left: 0;
+}
+.coach-arrow-left {
+  left: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coach-bubble,
+  .coach-content {
+    transition: none;
+    animation: none;
+  }
+}
