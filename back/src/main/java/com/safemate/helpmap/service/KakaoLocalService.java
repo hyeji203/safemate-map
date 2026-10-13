@@ -8,6 +8,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -196,6 +197,64 @@ public class KakaoLocalService {
         return response == null || response.documents() == null ? List.of() : response.documents();
     }
 
+    /**
+     * 지도 화면 "안전시설 레이어": 지금 보이는 지도 범위(rect) 안의 편의점 / 파출소·지구대.
+     * - convenience: 카테고리 검색 CS2(편의점). 카카오 API에 영업시간이 없어 24시 여부는 거르지 않는다
+     * - police: 키워드 "지구대", "파출소"를 공공기관(PO3)으로 한정해 검색 (PO3만 쓰면 주민센터·우체국 등이 섞인다)
+     * 한 번에 최대 15개씩 FACILITY_MAX_PAGES 페이지까지만 받는다 (카카오 API 상한 45개). 같은 장소는 placeUrl로 하나만.
+     */
+    public List<PlaceResponse> searchFacilities(String type, double swLat, double swLng, double neLat, double neLng) {
+        String rect = swLng + "," + swLat + "," + neLng + "," + neLat;
+        List<CompletableFuture<List<KeywordSearchResponse.Document>>> futures = switch (type) {
+            case "convenience" -> List.of(
+                    CompletableFuture.supplyAsync(() -> searchInRect(null, "CS2", rect), executor));
+            case "police" -> POLICE_KEYWORDS.stream()
+                    .map(keyword -> CompletableFuture.supplyAsync(() -> searchInRect(keyword, "PO3", rect), executor))
+                    .toList();
+            default -> throw new IllegalArgumentException("알 수 없는 시설 종류: " + type);
+        };
+        Map<String, PlaceResponse> merged = new LinkedHashMap<>();
+        futures.stream()
+                .flatMap(f -> f.join().stream())
+                .map(this::toPlaceResponse)
+                .forEach(p -> merged.putIfAbsent(p.placeUrl(), p));
+        return List.copyOf(merged.values());
+    }
+
+    private static final List<String> POLICE_KEYWORDS = List.of("지구대", "파출소");
+    private static final int FACILITY_PAGE_SIZE = 15; // 카카오 API 최대값
+    private static final int FACILITY_MAX_PAGES = 3; // 카카오 API는 45개(3페이지)까지만 준다
+
+    /** keyword가 null이면 카테고리 검색, 있으면 그 카테고리로 한정한 키워드 검색. 마지막 페이지(is_end)까지 이어 받는다 */
+    private List<KeywordSearchResponse.Document> searchInRect(String keyword, String categoryCode, String rect) {
+        List<KeywordSearchResponse.Document> results = new ArrayList<>();
+        for (int page = 1; page <= FACILITY_MAX_PAGES; page++) {
+            int currentPage = page;
+            PagedSearchResponse response = restClient.get()
+                    .uri(uriBuilder -> {
+                        uriBuilder.path(keyword == null ? "/v2/local/search/category.json" : "/v2/local/search/keyword.json")
+                                .queryParam("category_group_code", categoryCode)
+                                .queryParam("rect", rect)
+                                .queryParam("size", FACILITY_PAGE_SIZE)
+                                .queryParam("page", currentPage);
+                        if (keyword != null) {
+                            uriBuilder.queryParam("query", keyword);
+                        }
+                        return uriBuilder.build();
+                    })
+                    .retrieve()
+                    .body(PagedSearchResponse.class);
+            if (response == null || response.documents() == null) {
+                break;
+            }
+            results.addAll(response.documents());
+            if (response.meta() == null || response.meta().isEnd()) {
+                break;
+            }
+        }
+        return results;
+    }
+
     /** 지도에서 누른 곳 근처로 찾은 장소를 응답으로 바꾼다. distanceMeters는 시연 지역 중심 기준으로 다시 계산한다 */
     private PlaceResponse toPlaceResponse(KeywordSearchResponse.Document d) {
         double lat = Double.parseDouble(d.y());
@@ -266,6 +325,12 @@ public class KakaoLocalService {
                 String distance,
                 String x,
                 String y) {
+        }
+    }
+
+    /** 여러 페이지를 이어 받는 검색(안전시설 레이어)용. 마지막 페이지 여부(meta.is_end)를 같이 읽는다 */
+    record PagedSearchResponse(Meta meta, List<KeywordSearchResponse.Document> documents) {
+        record Meta(@JsonProperty("is_end") boolean isEnd) {
         }
     }
 

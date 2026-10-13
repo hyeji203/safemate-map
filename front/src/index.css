@@ -98,33 +98,6 @@ body {
   }
 }
 
-/* 지도 화면 사용 안내 카드(MapGuide). 플로팅 버튼(.map-fab)과 같은 반투명 흰색이라 지도를 덜 가린다 */
-.map-guide {
-  border: 1px solid rgba(26, 43, 76, 0.15);
-  background: rgba(255, 255, 255, 0.72);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
-}
-.map-guide-chip {
-  border: 1px solid rgba(26, 43, 76, 0.25);
-  background: rgba(255, 255, 255, 0.7);
-  color: #1a2b4c;
-  transition: background-color 0.2s ease;
-}
-.map-guide-chip:hover {
-  background: #fff;
-}
-/* 첫 번째(주요) 칩: 남색 바탕 + 노란 글씨 */
-.map-guide-chip.is-primary {
-  border-color: transparent;
-  background: #1a2b4c;
-  color: #ffb020;
-}
-.map-guide-chip.is-primary:hover {
-  background: #22375f;
-}
-
 /* 코치마크: 비추는 버튼만 밝게 남기고 나머지 화면을 어둡게 덮는다 */
 .coach-spot {
   box-shadow: 0 0 0 200vmax rgba(11, 21, 40, 0.6);
@@ -134,7 +107,6 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .map-guide-chip,
   .coach-spot {
     transition: none;
   }
@@ -184,6 +156,166 @@ body {
   .coach-bubble,
   .coach-content {
     transition: none;
+    animation: none;
+  }
+}
+
+/* 빠른 출발 시트 칩: 모두 같은 모양(흰 바탕 + 연회색 테두리). 줄은 한 줄 가로 스크롤, 스크롤바는 숨긴다 */
+.quick-start-row {
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+.quick-start-row::-webkit-scrollbar {
+  display: none;
+}
+.quick-start-chip {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #1a2b4c;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+.quick-start-chip:hover {
+  border-color: #8a93a6;
+  background: #f5f6f8;
+}
+
+/* ⚠ 제보 버튼 메뉴 (버튼 바로 위로 펼쳐진다) */
+.report-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  transform-origin: bottom right;
+  animation: report-menu-open 0.15s ease-out;
+}
+@keyframes report-menu-open {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.report-menu-item {
+  padding: 10px 12px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: #1a2b4c;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.report-menu-item:hover,
+.report-menu-item:focus-visible {
+  background: #f5f6f8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-start-chip {
+    transition: none;
+  }
+  .report-menu {
+    animation: none;
+  }
+}
+
+/* 지도 화면 검색창 아래 칩 줄 (SafetyChips): [주변 제보 N] │ 안전시설 칩(가로 스크롤) */
+.safety-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.safety-chips > .safety-chip {
+  margin-bottom: 2px; /* 스크롤 줄 안 칩과 높이를 맞춘다 (스크롤 줄 아래 여백 4px - 위 여백 2px) */
+}
+.safety-chips-divider {
+  flex-shrink: 0;
+  width: 1px;
+  height: 20px;
+  background: rgba(26, 43, 76, 0.25);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6); /* 지도 위에서도 보이게 흰 테두리 */
+}
+.safety-chips-row {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 24px 4px 0; /* 오른쪽 여백: 마지막 칩이 흐린 끝에 묻히지 않게 */
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  /* 오른쪽 끝을 흐리게 해서 옆으로 더 있다는 걸 보여준다 */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+.safety-chips-row::-webkit-scrollbar {
+  display: none;
+}
+.safety-chip {
+  /* 색·투명도·테두리·hover·켜짐 상태는 지도 플로팅 버튼과 같은 .map-fab이 맡는다 (주변 제보 칩과 안전시설 칩이 똑같아 보이게).
+     여기서는 크기와 모양만 정한다 */
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+/* 데이터가 없는 칩: 더 흐리게, hover·누름에도 진해지지 않게 (누르면 준비 중 안내만) */
+.map-fab.safety-chip.is-unavailable,
+.map-fab.safety-chip.is-unavailable:hover,
+.map-fab.safety-chip.is-unavailable:active {
+  border-color: rgba(26, 43, 76, 0.1);
+  background: rgba(255, 255, 255, 0.45);
+  color: rgba(26, 43, 76, 0.35);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+.map-fab.safety-chip.is-unavailable .map-fab-icon {
+  opacity: 0.4;
+}
+.safety-chip-badge {
+  min-width: 18px;
+  height: 18px;
+  margin-left: 2px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #e5484d;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+/* 칩 줄 아래에 잠깐 뜨는 안내 (CCTV 데이터 준비 중, 확대 필요 등) */
+.map-hint-toast {
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: rgba(26, 43, 76, 0.92);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  animation: coach-fade 0.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-hint-toast {
     animation: none;
   }
 }
