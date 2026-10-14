@@ -13,17 +13,17 @@ export default function QuickStartSheet({ style, destinations, error }) {
       {error && <p className="m-0 px-3.5 text-[12px] leading-snug break-keep text-[#E5484D]">{error}</p>}
       <b className="px-3.5 text-[14px] text-[#1A2B4C]">어디로 갈까요?</b>
       {destinations.length > 0 ? (
-        // 한 줄로만 놓고 넘치면 옆으로 밀어 본다. 모두 같은 모양이라 처음부터 골라진 것처럼 보이는 칩이 없다
-        <div className="quick-start-row flex gap-1.5 overflow-x-auto px-3.5">
+        // 옆으로 밀지 않아도 다 보이게 넘치면 다음 줄로 내린다. 모두 같은 모양이라 처음부터 골라진 것처럼 보이는 칩이 없다
+        <div className="flex flex-wrap gap-1.5 px-3.5">
           {destinations.map((d) => (
             <button
               key={d.key}
               type="button"
               onClick={d.onClick}
-              className="quick-start-chip shrink-0 cursor-pointer rounded-full px-3 py-1.5 text-[13px] font-semibold whitespace-nowrap"
+              className="quick-start-chip flex max-w-full min-w-0 cursor-pointer items-center gap-1 rounded-full px-3 py-1.5 text-[13px] font-semibold whitespace-nowrap"
             >
-              <span aria-hidden>{d.icon}</span>{' '}
-              <span className="inline-block max-w-[9em] truncate align-bottom">{d.label}</span>
+              <span aria-hidden>{d.icon}</span>
+              <span className="min-w-0 truncate">{d.label}</span>
             </button>
           ))}
         </div>
