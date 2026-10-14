@@ -34,14 +34,11 @@ const NEARBY_REPORT_RADIUS_LABEL =
 // 가로등은 이 줌 레벨 이하(= 확대했을 때)에서만 표시 (카카오맵은 숫자가 작을수록 확대)
 // 장소 검색 후 이동하는 레벨(2)에서도 보이도록 2으로 맞춘다
 const STREETLIGHT_MAX_LEVEL = 2
-// CCTV도 지점이 많아서 어느 정도 확대했을 때만 표시
-const CCTV_MAX_LEVEL = 4
 // 안전시설 레이어 종류별 색·아이콘 (칩 줄과 같은 값)
 const SAFETY_LAYER_STYLE = Object.fromEntries(SAFETY_LAYERS.map((l) => [l.key, l]))
 // 칩을 켰는데 지금 확대 정도에서는 안 보일 때 띄우는 안내
 const LAYER_ZOOM_HINTS = {
   streetlight: '지도를 더 확대하면 가로등이 보여요',
-  cctv: '지도를 더 확대하면 CCTV가 보여요',
   convenience: '지도를 확대하면 편의점이 보여요',
   police: '지도를 확대하면 파출소·지구대가 보여요',
 }
@@ -403,12 +400,10 @@ export default function MapPage() {
   }
 
   // 안전시설 레이어 (검색창 아래 칩 줄). 지금 보이는 지도 범위를 받아 편의점·파출소를 그 범위만 검색한다.
-  // CCTV는 데이터 파일이 없으면 칩을 흐리게 보여줘야 해서 처음부터 불러 둔다 (없으면 빈 목록 한 번)
   const [mapBounds, setMapBounds] = useState(null)
-  const safety = useSafetyLayers(mapBounds, { preloadCctv: true })
-  const cctvUnavailable = safety.cctvLoaded && safety.cctvs.length === 0
+  const safety = useSafetyLayers(mapBounds)
 
-  // 칩 줄 아래에 잠깐 뜨는 안내 (CCTV 데이터 준비 중, 확대해야 보임)
+  // 칩 줄 아래에 잠깐 뜨는 안내 (확대해야 보임)
   const [mapHint, setMapHint] = useState(null)
   useEffect(() => {
     if (!mapHint) return
@@ -422,31 +417,14 @@ export default function MapPage() {
     safety.toggle(key)
     if (!turningOn) return
     const level = mapBounds?.level
-    const hidden =
-      key === 'streetlight' ? level > STREETLIGHT_MAX_LEVEL : key === 'cctv' ? level > CCTV_MAX_LEVEL : safety.tooWide
+    const hidden = key === 'streetlight' ? level > STREETLIGHT_MAX_LEVEL : safety.tooWide
     setMapHint(hidden ? LAYER_ZOOM_HINTS[key] : null)
   }
 
-  // CCTV·편의점·파출소 마커: 작고 반투명(subtle)하게, 제보 마커보다 눈에 덜 띄도록.
+  // 편의점·파출소 마커: 작고 반투명(subtle)하게, 제보 마커보다 눈에 덜 띄도록.
   // 편의점·파출소를 누르면 지도에서 장소를 누른 것과 같이 장소 정보 카드를 띄운다 (출발/도착 지정 가능)
   const safetyMarkers = useMemo(() => {
     const list = []
-    if (safety.layers.cctv) {
-      const { color, icon } = SAFETY_LAYER_STYLE.cctv
-      for (const c of safety.cctvs) {
-        list.push({
-          id: `cctv-${c.id}`,
-          lat: c.latitude,
-          lng: c.longitude,
-          title: `CCTV (${c.purpose}${c.cameraCount > 1 ? `, ${c.cameraCount}대` : ''})`,
-          color,
-          icon,
-          size: 16,
-          subtle: true,
-          maxLevel: CCTV_MAX_LEVEL,
-        })
-      }
-    }
     if (!safety.tooWide) {
       for (const type of FACILITY_TYPES) {
         if (!safety.layers[type]) continue
@@ -469,7 +447,7 @@ export default function MapPage() {
     return list
     // search.onSelect는 마커를 누를 때만 쓰므로 목록을 다시 만들 이유가 아니다
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [safety.layers, safety.cctvs, safety.facilities, safety.tooWide])
+  }, [safety.layers, safety.facilities, safety.tooWide])
 
   // 보행로 그래프 노드(교차로)는 경로 계산에만 쓰고 지도에는 표시하지 않는다
   const streetLightMarkers = useMemo(
@@ -1151,8 +1129,6 @@ export default function MapPage() {
         style={{ position: 'absolute', zIndex: 9, top: 64, left: 12, right: 12 }}
         layers={safety.layers}
         onToggle={toggleLayer}
-        unavailable={{ cctv: cctvUnavailable }}
-        onUnavailable={() => setMapHint('CCTV 데이터 준비 중이에요')}
         reports={{
           count: nearbyReports.length,
           active: nearbyActive,
