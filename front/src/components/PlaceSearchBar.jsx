@@ -72,7 +72,7 @@ export default function PlaceSearchBar({ search, history, placeholder = SEARCH_L
         )}
         </div>
         {query && (
-          <button type="button" onClick={reset} aria-label="검색어 지우기" style={clearButtonStyle}>
+          <button type="button" onClick={() => reset()} aria-label="검색어 지우기" style={clearButtonStyle}>
             ✕
           </button>
         )}
