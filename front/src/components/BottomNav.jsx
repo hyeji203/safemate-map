@@ -19,7 +19,8 @@ export default function BottomNav() {
   return (
     <nav
       className="fixed inset-x-0 bottom-0 z-50 flex border-0 border-t border-solid border-line bg-[#070E1C] pb-[env(safe-area-inset-bottom)]"
-      style={{ height: BOTTOM_NAV_HEIGHT }}
+      // 아이폰 홈 바 영역(safe-area)만큼 높이를 더해, 그 여백 때문에 탭 아이콘이 눌려 작아지지 않게 한다
+      style={{ height: `calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom))` }}
     >
       {TABS.map(({ to, label, Icon, end }) => (
         <NavLink

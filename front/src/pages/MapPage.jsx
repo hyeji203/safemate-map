@@ -1348,7 +1348,7 @@ export default function MapPage() {
         place={selectedPlace}
         favorite={selectedFavorite}
         onAddFavorite={addFavorite}
-        onClose={search.reset}
+        onClose={() => search.reset()}
         onSetStart={() => setPlaceAs(setStart, 'place-start')}
         onSetEnd={() => setPlaceAs(setEnd, 'place-end')}
       />

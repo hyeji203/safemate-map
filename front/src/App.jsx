@@ -24,11 +24,11 @@ function App() {
               style={{
                 display: 'flex',
                 flexDirection: 'column',
-                height: '100vh',
+                height: '100%',
                 background: colors.background,
               }}
             >
-              <main style={{ flex: 1, overflow: 'auto', paddingBottom: BOTTOM_NAV_HEIGHT }}>
+              <main style={{ flex: 1, overflow: 'auto', paddingBottom: `calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom))` }}>
                 <Routes>
                   <Route path="/" element={<MapPage />} />
                   <Route path="/route-detail" element={<RouteDetailPage />} />
