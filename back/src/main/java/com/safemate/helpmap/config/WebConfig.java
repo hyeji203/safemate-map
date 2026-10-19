@@ -12,8 +12,9 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 
+    // 쉼표로 여러 주소 허용 (PC 개발 주소 + 휴대폰 확인용 터널 주소). 예) https://safemate.com:5173,https://xxx.ngrok-free.dev
     @Value("${app.cors.allowed-origins}")
-    private String allowedOrigin;
+    private String[] allowedOrigins;
 
     @Value("${app.upload-dir}")
     private String uploadDir;
@@ -21,7 +22,7 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/api/**")
-                .allowedOrigins(allowedOrigin)
+                .allowedOrigins(allowedOrigins)
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(true); // 로그인 세션 쿠키
