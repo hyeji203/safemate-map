@@ -5,6 +5,7 @@ import { apiClient } from './client'
 export const routeApi = {
   findNodes: () => apiClient.get('/nodes'),
   findStreetLights: () => apiClient.get('/street-lights'),
-  findRoute: ({ fromLat, fromLng, toLat, toLng, fromAddress, toAddress }) =>
-    apiClient.get('/routes', { params: { fromLat, fromLng, toLat, toLng, fromAddress, toAddress } }),
+  // signal: AbortController.signal (선택). 출발/도착이 바뀌면 이전 요청을 취소하는 데 쓴다
+  findRoute: ({ fromLat, fromLng, toLat, toLng, fromAddress, toAddress }, signal) =>
+    apiClient.get('/routes', { params: { fromLat, fromLng, toLat, toLng, fromAddress, toAddress }, signal }),
 }
