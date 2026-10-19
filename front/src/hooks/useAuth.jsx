@@ -33,7 +33,12 @@ export function AuthProvider({ children }) {
     setMember(null)
   }, [])
 
-  return <AuthContext.Provider value={{ member, loading, login, signup, logout }}>{children}</AuthContext.Provider>
+  const withdraw = useCallback(async (password) => {
+    await memberApi.withdraw(password)
+    setMember(null)
+  }, [])
+
+  return <AuthContext.Provider value={{ member, loading, login, signup, logout, withdraw }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

@@ -630,7 +630,10 @@ export default function MapPage() {
   const { mode: tutorialMode, replayHint } = useTutorial()
   const searchWrapRef = useRef(null)
   // 자동으로 띄울지: "다시 표시 안 함"을 체크하고 닫은 적이 없고, 이번 접속에 아직 닫지 않았을 때
-  const [coachAuto, setCoachAuto] = useState(() => !readFlag(COACH_MARKS_SEEN_KEY) && !coachClosedThisVisit)
+  // 로그인 화면에서 "로그인 없이 시작하기"로 들어왔으면(guestStart) "다시 표시 안 함" 기록과 상관없이 띄운다
+  const [coachAuto, setCoachAuto] = useState(
+    () => !!routedState.guestStart || (!readFlag(COACH_MARKS_SEEN_KEY) && !coachClosedThisVisit),
+  )
   const [coachReplay, setCoachReplay] = useState(false) // "?" 버튼으로 연 경우 (다시 표시 안 함과 상관없이 연다)
   // 아무것도 안 하고 지도만 보고 있는 상태 (경로·제보 모드·아래 카드·출발/도착 변경 중이 아님)
   const idle = !start && !end && !reportMode && !bottomSheetOpen && !editingPoint

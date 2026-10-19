@@ -3,6 +3,7 @@ package com.safemate.helpmap.controller;
 import com.safemate.helpmap.dto.LoginRequest;
 import com.safemate.helpmap.dto.MemberResponse;
 import com.safemate.helpmap.dto.SignupRequest;
+import com.safemate.helpmap.dto.WithdrawRequest;
 import com.safemate.helpmap.entity.Member;
 import com.safemate.helpmap.service.CurrentMemberService;
 import com.safemate.helpmap.service.MemberService;
@@ -13,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * 로그인 상태는 서버 세션(JSESSIONID 쿠키)으로 유지한다.
@@ -42,6 +44,19 @@ public class MemberController {
 
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(HttpServletRequest httpRequest) {
+        HttpSession session = httpRequest.getSession(false);
+        if (session != null) {
+            session.invalidate();
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    /** 회원탈퇴. 로그인한 상태에서 비밀번호를 다시 확인하고, 탈퇴하면 세션도 끝낸다 */
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> withdraw(@RequestBody @Valid WithdrawRequest request, HttpServletRequest httpRequest) {
+        Member member = currentMemberService.loggedInMember()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다."));
+        memberService.withdraw(member.getId(), request.password());
         HttpSession session = httpRequest.getSession(false);
         if (session != null) {
             session.invalidate();

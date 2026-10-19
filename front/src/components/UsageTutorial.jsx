@@ -19,7 +19,9 @@ import {
   UserRound,
   X,
 } from 'lucide-react'
+import { useLocation } from 'react-router-dom'
 import { useTutorial } from '../hooks/useTutorial'
+import { AUTH_PATHS } from '../constants/authPaths'
 import { AlertScene, CompareScene, FavoritesScene, IntroScene, NearbyScene, ReportScene, SearchScene } from './TutorialScenes'
 
 // 처음 방문과 마이페이지 "사용가이드 다시 보기"가 같은 안내를 쓴다.
@@ -100,6 +102,9 @@ const STEPS = [
 
 export default function UsageTutorial() {
   const { mode, dismiss, startTour, replayHint, hideReplayHint } = useTutorial()
+  const { pathname } = useLocation()
+  // 앱 첫 화면이 로그인 화면일 때 그 위에 겹쳐 뜨지 않게, 로그인·회원가입 화면에서는 지도로 넘어간 뒤에 띄운다
+  if (AUTH_PATHS.includes(pathname)) return null
   if (mode === 'ask') return <FirstVisitDialog onStart={startTour} onSkip={dismiss} />
   if (mode !== 'tour') return replayHint ? <ReplayHint onClose={hideReplayHint} /> : null
   // 닫히면 이 화면이 언마운트되므로, 다시 열면 항상 첫 단계부터 시작한다.
