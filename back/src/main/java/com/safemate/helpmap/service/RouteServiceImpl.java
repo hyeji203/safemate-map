@@ -40,15 +40,25 @@ public class RouteServiceImpl implements RouteService {
     private static final int ROUTE_CANDIDATES = 4;
     private static final double ALTERNATIVE_PENALTY = 1.3;
 
+    // 지하철역 출구 후보: 반대쪽 끝에서 직선거리로 가까운 순으로 이만큼만 실제 경로를 구해 비교한다 (출구마다 탐색을 다시 해서)
+    private static final int EXIT_CANDIDATES = 3;
+
     private final EdgeRepository edgeRepository;
     private final StreetLightRepository streetLightRepository;
     private final ReportRepository reportRepository;
     private final RiskWeightCalculator riskWeightCalculator;
     private final CrosswalkCatalog crosswalkCatalog;
+    private final KakaoLocalService kakaoLocalService;
+    private final SubwayExitCatalog subwayExitCatalog;
 
     @Override
     public RoutesResponse findRoutes(double fromLat, double fromLng, double toLat, double toLng,
-                                     String fromAddress, String toAddress) {
+                                     String fromAddress, String toAddress, String fromName, String toName) {
+        // 출발/도착이 지하철역이면 역 가운데(선로 위 좌표) 대신 출구에서 출발/도착한다. 출구마다 경로를 구해
+        // 최단경로는 가장 짧은 출구, 안심경로는 가장 안전한 출구를 따로 고른다 (두 경로가 서로 다른 출구일 수 있다)
+        List<Endpoint> froms = endpoints(fromName, fromLat, fromLng, fromAddress, toLat, toLng);
+        List<Endpoint> tos = endpoints(toName, toLat, toLng, toAddress, fromLat, fromLng);
+
         List<Edge> edges = new ArrayList<>(edgeRepository.findAllWithNodes());
         if (edges.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "보행로 데이터가 없습니다.");
@@ -66,6 +76,82 @@ public class RouteServiceImpl implements RouteService {
         for (Edge edge : edges) {
             adjacency.computeIfAbsent(edge.getFromNode().getId(), k -> new ArrayList<>()).add(edge);
         }
+
+        Option shortest = null;
+        Option safe = null;
+        for (Endpoint from : froms) {
+            for (Endpoint to : tos) {
+                Options options = plan(edges, adjacency, risks, from, to);
+                if (options == null) {
+                    continue;
+                }
+                if (shortest == null || options.shortest().score() < shortest.score()) {
+                    shortest = options.shortest();
+                }
+                if (safe == null || options.safe().score() < safe.score()) {
+                    safe = options.safe();
+                }
+            }
+        }
+        if (shortest == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "출발지와 도착지를 잇는 경로가 없습니다.");
+        }
+        // 출구가 다르면 안심경로 쪽 출구가 실제로 더 짧을 수 있다. 그때는 최단경로도 그 길로 한다
+        if (safe.response().totalDistanceMeters() < shortest.response().totalDistanceMeters()) {
+            shortest = safe;
+        }
+        return new RoutesResponse(shortest.response(), safe.response());
+    }
+
+    /** 경로의 한쪽 끝. exit은 지하철역 출구일 때만 있다 */
+    private record Endpoint(double lat, double lng, String address, RouteResponse.Exit exit) {
+    }
+
+    /**
+     * 한 출발·도착 조합으로 구한 경로와 출구끼리 비교하는 값.
+     * 최단경로는 실제로 걷는 거리(m), 안심경로는 위험도를 더한 탐색 비용. 최단경로를 탐색 비용으로 고르면
+     * 큰 도로·횡단 비용 때문에 더 먼 출구가 골라져 안심경로보다 길게 나오는 일이 있었다
+     */
+    private record Option(RouteResponse response, double score) {
+    }
+
+    private record Options(Option shortest, Option safe) {
+    }
+
+    /**
+     * 장소가 지하철역이면 출구 후보들(반대쪽 끝에서 가까운 EXIT_CANDIDATES곳), 아니면 장소 좌표 하나.
+     * 출구 좌표는 보도 위라 가장 가까운 도로에 붙이면 되므로 주소(큰 길 판단)는 쓰지 않는다
+     */
+    private List<Endpoint> endpoints(String name, double lat, double lng, String address,
+                                     double otherLat, double otherLng) {
+        List<KakaoLocalService.SubwayExit> exits;
+        try {
+            exits = kakaoLocalService.findSubwayExits(name, lat, lng);
+        } catch (RuntimeException e) {
+            exits = List.of(); // 카카오 검색이 실패해도 경로는 역 좌표로 찾는다
+        }
+        if (exits.isEmpty()) {
+            return List.of(new Endpoint(lat, lng, address, null));
+        }
+        return exits.stream()
+                .sorted(Comparator.comparingDouble(
+                        e -> GeoUtils.haversineMeters(e.latitude(), e.longitude(), otherLat, otherLng)))
+                .limit(EXIT_CANDIDATES)
+                .map(e -> new Endpoint(e.latitude(), e.longitude(), null,
+                        new RouteResponse.Exit(e.label(), e.latitude(), e.longitude(),
+                                subwayExitCatalog.typeOf(name, e.number()))))
+                .toList();
+    }
+
+    /** 출발·도착 한 조합의 최단경로와 안심경로. 잇는 길이 없으면 null */
+    private Options plan(List<Edge> edges, Map<Long, List<Edge>> adjacency, Map<Long, EdgeRisk> risks,
+                         Endpoint from, Endpoint to) {
+        double fromLat = from.lat();
+        double fromLng = from.lng();
+        double toLat = to.lat();
+        double toLng = to.lng();
+        String fromAddress = from.address();
+        String toAddress = to.address();
 
         // 출발/도착 좌표(건물 위치)는 가장 가까운 도로 위 지점으로 나와서, 그 도로를 따라 양 끝 교차로 중 유리한 쪽으로 간다
         // 도로명주소가 큰 길 이름이면(예: "광명로 319") 출입구가 그 길에 있으므로 가까운 큰 도로를 먼저 본다
@@ -119,18 +205,22 @@ public class RouteServiceImpl implements RouteService {
         Planned shortest = bestRoute(sidewalks, start, goal, searchGraph, keys, walkingCost, origin, destination);
         Planned safe = bestRoute(sidewalks, start, goal, searchGraph, keys, safeCost, origin, destination);
         if (shortest == null || safe == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "출발지와 도착지를 잇는 경로가 없습니다.");
+            return null;
         }
         // 안심경로가 최단경로 기준으로도 더 나으면 최단경로도 그 길로 한다. 탐색 비용은 그래프 기준이라 실제 걷는 길과
         // 조금 어긋나서(예: 횡단보도를 건넌 뒤 골목 입구까지 되돌아가는 거리는 안 셈), 안심경로가 더 짧게 표시되는 일이 있었다
-        if (score(sidewalks, start, goal, safe, keys, walkingCost, origin, destination)
-                < score(sidewalks, start, goal, shortest, keys, walkingCost, origin, destination)) {
+        double shortestScore = score(sidewalks, start, goal, shortest, keys, walkingCost, origin, destination);
+        double safeWalkingScore = score(sidewalks, start, goal, safe, keys, walkingCost, origin, destination);
+        if (safeWalkingScore < shortestScore) {
             shortest = safe;
+            shortestScore = safeWalkingScore;
         }
+        double safeScore = score(sidewalks, start, goal, safe, keys, safeCost, origin, destination);
 
-        return new RoutesResponse(
-                toResponse(fromLat, fromLng, toLat, toLng, start, goal, shortest, riskOf, origin, destination),
-                toResponse(fromLat, fromLng, toLat, toLng, start, goal, safe, riskOf, origin, destination));
+        RouteResponse shortestResponse = toResponse(from, to, start, goal, shortest, riskOf, origin, destination);
+        return new Options(
+                new Option(shortestResponse, shortestResponse.totalDistanceMeters()),
+                new Option(toResponse(from, to, start, goal, safe, riskOf, origin, destination), safeScore));
     }
 
     /** 고른 경로와 그 경로를 지도에 그릴 모양 */
@@ -228,9 +318,13 @@ public class RouteServiceImpl implements RouteService {
         return node == start ? START_KEY : GOAL_KEY;
     }
 
-    private RouteResponse toResponse(double fromLat, double fromLng, double toLat, double toLng,
+    private RouteResponse toResponse(Endpoint from, Endpoint to,
                                      Node start, Node goal, Planned planned, Function<Edge, EdgeRisk> riskOf,
                                      double[] origin, double[] destination) {
+        double fromLat = from.lat();
+        double fromLng = from.lng();
+        double toLat = to.lat();
+        double toLng = to.lng();
         SidewalkPlanner.Route route = planned.route();
         List<RouteResponse.Point> points = new ArrayList<>();
         addPoint(points, start);
@@ -262,7 +356,7 @@ public class RouteServiceImpl implements RouteService {
             total = length(drawn.geometry());
         }
         return new RouteResponse(total, (int) Math.ceil(total / WALKING_METERS_PER_MINUTE), dark, reported, points,
-                drawn.geometry(), drawn.crossings());
+                drawn.geometry(), drawn.crossings(), from.exit(), to.exit());
     }
 
     /** 지나는 교차로 목록에 추가. 임시 출발/도착 노드(도로 위 지점)는 교차로가 아니라서 넣지 않는다 */

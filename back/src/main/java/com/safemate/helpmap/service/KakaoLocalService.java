@@ -17,6 +17,8 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -310,6 +312,62 @@ public class KakaoLocalService {
             return doc.roadAddress().addressName();
         }
         return doc.address() != null ? doc.address().addressName() : null;
+    }
+
+    // 지하철역 장소 이름 (예: "남한산성입구역 8호선", "남한산성입구역"). 이런 이름일 때만 출구를 찾는다
+    private static final Pattern STATION_NAME = Pattern.compile("^\\S+역( \\S+선)?$");
+    private static final Pattern EXIT_NUMBER = Pattern.compile("(\\d+)번\\s*출구");
+    // 출구 번호를 1번부터 이만큼까지 찾아본다. 시연 지역 역은 출구가 4~7개
+    private static final int MAX_EXIT_NUMBER = 12;
+    // 역 좌표에서 이 거리(m) 안의 출구만 그 역 출구로 본다. 번호 검색에 옆 역 출구가 섞여 나오는 것을 거른다
+    private static final int EXIT_RADIUS_METERS = 400;
+
+    /** 지하철역 출구 한 곳. label은 "4번 출구" */
+    public record SubwayExit(int number, String label, double latitude, double longitude) {
+    }
+
+    /**
+     * 지하철역 장소의 출구 목록. 카카오는 "역 출구"로 한꺼번에 검색하면 출구 대신 주변 가게를 주므로
+     * "남한산성입구역 8호선 1번출구"처럼 번호마다 따로 검색한다 (병렬). 역 이름이 아니거나 출구를 못 찾으면 빈 목록.
+     * 임시 폐쇄된 출구는 뺀다.
+     */
+    public List<SubwayExit> findSubwayExits(String placeName, double lat, double lng) {
+        if (placeName == null || !STATION_NAME.matcher(placeName.trim()).matches()) {
+            return List.of();
+        }
+        String station = placeName.trim();
+        List<CompletableFuture<Optional<SubwayExit>>> futures = new ArrayList<>();
+        for (int n = 1; n <= MAX_EXIT_NUMBER; n++) {
+            int number = n;
+            futures.add(CompletableFuture.supplyAsync(() -> findSubwayExit(station, number, lat, lng), executor));
+        }
+        return futures.stream().map(CompletableFuture::join).flatMap(Optional::stream).toList();
+    }
+
+    private Optional<SubwayExit> findSubwayExit(String station, int number, double lat, double lng) {
+        KeywordSearchResponse response = restClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/v2/local/search/keyword.json")
+                        .queryParam("query", station + " " + number + "번출구")
+                        .queryParam("x", lng)
+                        .queryParam("y", lat)
+                        .queryParam("radius", EXIT_RADIUS_METERS)
+                        .queryParam("size", 3)
+                        .build())
+                .retrieve()
+                .body(KeywordSearchResponse.class);
+        if (response == null || response.documents() == null) {
+            return Optional.empty();
+        }
+        return response.documents().stream()
+                .filter(d -> d.categoryName() != null && d.categoryName().endsWith("지하철출구"))
+                .filter(d -> d.placeName().startsWith(station) && !d.placeName().contains("폐쇄"))
+                .filter(d -> {
+                    Matcher m = EXIT_NUMBER.matcher(d.placeName());
+                    return m.find() && Integer.parseInt(m.group(1)) == number;
+                })
+                .findFirst()
+                .map(d -> new SubwayExit(number, number + "번 출구", Double.parseDouble(d.y()), Double.parseDouble(d.x())));
     }
 
     /** 카카오 키워드 검색 API 응답 중 필요한 필드만 옮겨 담는 파싱용 DTO. */
