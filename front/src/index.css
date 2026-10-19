@@ -23,10 +23,28 @@
 
 body {
   margin: 0;
+  /* PC처럼 넓은 화면에서 앱 화면 바깥에 보이는 배경 */
+  background: #0b1528;
+  overscroll-behavior: none; /* 당겨서 새로고침·바운스로 화면 전체가 흔들리지 않게 */
 }
 
+/* 앱 화면 틀: 휴대폰 폭(최대 480px)으로 가운데에 고정. 넓은 화면에서도 휴대폰 앱처럼 보인다.
+   transform을 주면 안쪽의 position: fixed 요소(하단 탭, 모달 등)가 브라우저 전체가 아니라 이 틀 기준으로 붙는다 */
 #root {
-  min-height: 100svh;
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  height: 100dvh;
+  margin: 0 auto;
+  overflow: hidden;
+  transform: translateZ(0);
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (min-width: 481px) {
+  #root {
+    box-shadow: 0 0 40px rgb(0 0 0 / 0.45);
+  }
 }
 
 /* 아래에서 올라오는 시트(주변 제보 목록, 지도 위 제보 카드) 등장 애니메이션 */
