@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 /** 지도 화면의 장소·주소 검색 (출발지/도착지 지정용). 카카오 REST API 키는 서버에서만 사용한다. */
 @RestController
@@ -54,5 +55,14 @@ public class PlaceController {
         return kakaoLocalService.findPlaceAt(lat, lng)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
+    /** 좌표의 주소만 (제보 모달의 "선택 위치" 표시용). 도로명 주소 우선, 주소가 없는 곳이면 204 */
+    @GetMapping("/address")
+    public ResponseEntity<Map<String, String>> address(@RequestParam double lat, @RequestParam double lng) {
+        String address = kakaoLocalService.coordToAddress(lat, lng);
+        return address == null || address.isBlank()
+                ? ResponseEntity.noContent().build()
+                : ResponseEntity.ok(Map.of("address", address));
     }
 }

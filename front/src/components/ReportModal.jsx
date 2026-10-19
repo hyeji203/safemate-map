@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { colors } from '../styles/colors'
 import { reportApi } from '../api/reportApi'
+import { placeApi } from '../api/placeApi'
 import { useNotifications } from '../hooks/useNotifications'
 import { REPORT_CATEGORIES as CATEGORIES } from '../constants/reportCategories'
 
@@ -16,6 +17,8 @@ export default function ReportModal({ location, onClose, onSubmitted }) {
   const [preview, setPreview] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
+  // 선택 위치의 주소. undefined = 찾는 중, null = 주소가 없는 곳(또는 조회 실패)
+  const [address, setAddress] = useState(undefined)
   const { markMine } = useNotifications()
 
   useEffect(() => {
@@ -24,6 +27,19 @@ export default function ReportModal({ location, onClose, onSubmitted }) {
     setImage(null)
     setPreview(null)
     setError(null)
+    setAddress(undefined)
+    // 응답이 오기 전에 모달이 닫히거나 다른 위치로 다시 열리면 이전 응답은 버린다
+    let ignore = false
+    placeApi
+      .findAddress(location.lat, location.lng)
+      .then((res) => !ignore && setAddress(res.data?.address ?? null))
+      .catch((err) => {
+        console.error('[ReportModal] 주소 조회 실패', err)
+        if (!ignore) setAddress(null)
+      })
+    return () => {
+      ignore = true
+    }
     // location은 열 때마다 새 객체라서 이 effect가 매번 실행됨
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location])
@@ -84,7 +100,7 @@ export default function ReportModal({ location, onClose, onSubmitted }) {
       >
         <h2 style={{ margin: '0 0 4px', color: colors.navy }}>위험구간 제보</h2>
         <p style={{ margin: '0 0 16px', fontSize: 13, color: colors.gray }}>
-          선택 위치: {location.lat.toFixed(5)}, {location.lng.toFixed(5)}
+          선택 위치: {address === undefined ? '주소 확인 중…' : (address ?? '주소를 찾을 수 없는 위치예요')}
         </p>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
