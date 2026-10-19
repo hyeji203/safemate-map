@@ -36,6 +36,10 @@ const NEARBY_REPORT_RADIUS_LABEL =
 // 가로등은 이 줌 레벨 이하(= 확대했을 때)에서만 표시 (카카오맵은 숫자가 작을수록 확대)
 // 장소 검색 후 이동하는 레벨(2)에서도 보이도록 2으로 맞춘다
 const STREETLIGHT_MAX_LEVEL = 2
+// 지하철 출구는 이 줌 레벨 이하(골목 단위로 확대)에서 계단/에스컬레이터 그림과 이름표로, 그보다 축소하면 작은 흰 원으로 보인다
+const EXIT_DETAIL_MAX_LEVEL = 3
+// 출발 핀 색. KakaoMap의 현재 위치 파란 점과 같은 색
+const START_PIN_COLOR = '#2F6FEE'
 // 안전시설 레이어 종류별 색·아이콘 (칩 줄과 같은 값)
 const SAFETY_LAYER_STYLE = Object.fromEntries(SAFETY_LAYERS.map((l) => [l.key, l]))
 // 칩을 켰는데 지금 확대 정도에서는 안 보일 때 띄우는 안내
@@ -336,6 +340,9 @@ export default function MapPage() {
           toLng: end.lng,
           fromAddress: start.address,
           toAddress: end.address,
+          // 지하철역이면 서버가 출구를 고른다. "현재 위치"는 장소 이름이 아니라서 보내지 않는다
+          fromName: start.fromMyLocation ? undefined : start.title,
+          toName: end.title,
         },
         controller.signal,
       )
@@ -528,10 +535,12 @@ export default function MapPage() {
       })
     }
     if (start) {
-      points.push({ id: start.id, lat: start.lat, lng: start.lng, title: start.title ?? '출발지', color: colors.navy, size: 20 })
+      // 출발지는 "출발" 글씨가 든 파란 핀 (현재 위치 표시와 같은 파란색)
+      points.push({ id: start.id, lat: start.lat, lng: start.lng, title: start.title ?? '출발지', color: START_PIN_COLOR, pin: true, pinText: '출발' })
     }
     if (end) {
-      points.push({ id: end.id, lat: end.lat, lng: end.lng, title: end.title ?? '도착지', color: colors.red, size: 20 })
+      // 도착지는 네이버지도처럼 "도착" 글씨가 든 빨간 핀
+      points.push({ id: end.id, lat: end.lat, lng: end.lng, title: end.title ?? '도착지', color: colors.red, pin: true, pinText: '도착' })
     }
     return points
   }, [start, end, selectedPlace])
@@ -793,6 +802,36 @@ export default function MapPage() {
     }))
   }, [visibleRoutes, selectedRouteKey])
 
+  // 출발/도착이 지하철역이면 고른 경로가 나오고 들어가는 출구를 표시한다 (경로선이 역 가운데가 아니라 이 출구에서 끝난다).
+  // 네이버지도처럼 축소했을 때는 작은 흰 원, 확대하면 계단/에스컬레이터 그림 + "2번 출구" 이름표
+  const exitMarkers = useMemo(() => {
+    if (!visibleRoutes) return []
+    const route = visibleRoutes[selectedRouteKey]
+    return [route.fromExit, route.toExit].filter(Boolean).flatMap((exit) => {
+      const base = { lat: exit.latitude, lng: exit.longitude, title: exit.label }
+      const kind = exit.type === 'ESCALATOR' ? ' (에스컬레이터)' : exit.type === 'STAIRS' ? ' (계단)' : ''
+      return [
+        {
+          ...base,
+          id: `exit-dot-${exit.latitude},${exit.longitude}`,
+          minLevel: EXIT_DETAIL_MAX_LEVEL + 1,
+          color: colors.white,
+          size: 12,
+          borderColor: '#1F2937',
+        },
+        {
+          ...base,
+          id: `exit-${exit.latitude},${exit.longitude}`,
+          title: exit.label + kind,
+          maxLevel: EXIT_DETAIL_MAX_LEVEL,
+          exit: { type: exit.type },
+          icon: exit.label.replace(/\D/g, ''),
+          label: exit.label,
+        },
+      ]
+    })
+  }, [visibleRoutes, selectedRouteKey])
+
   const allMarkers = useMemo(
     () => [
       ...(safety.layers.streetlight ? streetLightMarkers : []), // 가로등 칩을 끄면 숨긴다 (경로 위험도 계산과는 무관)
@@ -800,6 +839,7 @@ export default function MapPage() {
       ...surveyedCrosswalkMarkers,
       ...reportMarkers,
       ...crossingMarkers,
+      ...exitMarkers,
       ...favoriteMarkers,
       ...searchedPointMarkers,
       ...nearbyFocusMarkers,
@@ -811,6 +851,7 @@ export default function MapPage() {
       surveyedCrosswalkMarkers,
       reportMarkers,
       crossingMarkers,
+      exitMarkers,
       favoriteMarkers,
       searchedPointMarkers,
       nearbyFocusMarkers,
@@ -1521,6 +1562,14 @@ function RouteCard({ label, color, route, selected, onSelect }) {
         <span style={{ fontSize: 14, fontWeight: 600 }}>분</span>
       </div>
       <div style={{ fontSize: 13, marginTop: 2 }}>{Math.round(route.totalDistanceMeters)}m</div>
+      {(route.fromExit || route.toExit) && (
+        // 지하철역에서 출발/도착하면 이 경로가 쓰는 출구 (최단·안심경로가 서로 다른 출구일 수 있다)
+        <div style={{ fontSize: 12, fontWeight: 700, color: colors.navy, marginTop: 4 }}>
+          {[route.fromExit && `${route.fromExit.label}로 나와서`, route.toExit && `${route.toExit.label}로 들어가기`]
+            .filter(Boolean)
+            .join(' · ')}
+        </div>
+      )}
       <div style={{ fontSize: 12, color: colors.gray, marginTop: 4 }}>
         어두운 구간 {Math.round(route.darkDistanceMeters)}m
       </div>

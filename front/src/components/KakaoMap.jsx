@@ -4,6 +4,15 @@ const KAKAO_JS_KEY = import.meta.env.REACT_APP_KAKAO_JS_KEY
 
 let sdkLoadPromise = null
 
+// 지하철 출구 배지 안의 그림 (흰 원 안에 진한 선)
+const EXIT_ICONS = {
+  stairs: `<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path d="M1.5 14h3.5v-3.5h3.5V7h3.5V3.5h2.5" fill="none" stroke="#1F2937" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  escalator: `<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path d="M1.5 14h3l7-8.5h3" fill="none" stroke="#1F2937" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="7" cy="2.6" r="1.6" fill="#1F2937"/><path d="M7 5v3.2" stroke="#1F2937" stroke-width="2" stroke-linecap="round"/></svg>`,
+}
+
 // Kakao Maps SDK는 앱 전체에서 한 번만 로드하면 되므로 Promise를 캐싱해서 중복 로드를 막는다.
 function loadKakaoMapSdk() {
   if (window.kakao?.maps) return Promise.resolve()
@@ -24,6 +33,10 @@ function loadKakaoMapSdk() {
  * 메인 지도 컴포넌트.
  * - markers: [{ id, lat, lng, title?, color?, size?, subtle?, glow?, maxLevel?, onClick?, badge?, pin?, label? }] 지도 위 점 표시 (color 미지정 시 네이비, size 미지정 시 14px).
  *   subtle: 얇은 테두리+반투명+그림자 없음. glow: 점 주변에 같은 색 빛 번짐 (가로등용). maxLevel: 지도 줌 레벨(작을수록 확대)이 이 값 이하일 때만 표시.
+ *   borderColor: 흰색 대신 쓸 테두리 색 (테두리를 크기 안에 그린다).
+ *   minLevel: 줌 레벨이 이 값 이상(= 축소했을 때)일 때만 표시. maxLevel과 짝지어 확대 정도에 따라 다른 모양을 보여 줄 때 쓴다.
+ *   pinText: pin과 함께 주면 흰 점 대신 이 글씨(예: "도착")가 든 큰 핀으로 그린다.
+ *   exit: { type: 'STAIRS' | 'ESCALATOR' | null } 지하철 출구 배지 (흰 원 안에 계단/에스컬레이터 그림, type이 null이면 icon 글자). label은 오른쪽 위 이름표.
  *   badge: 오른쪽 위에 작은 숫자 표시 (같은 위치에 여러 건 묶였을 때 개수 표시용).
  *   pin: true면 물방울 모양 핀으로 그림 (선택한 장소 표시용). label을 주면 핀 아래에 이름표를 붙인다.
  *   star: true면 노란 원 + 흰 별로 그림 (즐겨찾기 표시용). label을 주면 아래에 이름표를 붙인다.
@@ -97,10 +110,61 @@ export default function KakaoMap({
     if (!mapReady) return
     const { kakao } = window
     const overlays = markers
-      .filter((m) => m.maxLevel == null || zoomLevel <= m.maxLevel)
+      .filter((m) => (m.maxLevel == null || zoomLevel <= m.maxLevel) && (m.minLevel == null || zoomLevel >= m.minLevel))
       .map((m) => {
         const el = document.createElement('div')
         el.title = m.title ?? ''
+
+        if (m.pin && m.pinText) {
+          // 글씨가 든 큰 물방울 핀 (네이버지도 도착 핀처럼). 뾰족한 끝이 좌표를 가리킨다
+          const pinColor = m.color ?? '#1A2B4C'
+          el.style.cssText = 'position:relative;width:36px;height:46px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))'
+          el.innerHTML = `<svg width="36" height="46" viewBox="0 0 34 44" xmlns="http://www.w3.org/2000/svg">
+            <path d="M17 1C8.2 1 1 8 1 16.8 1 28.5 17 43 17 43s16-14.5 16-26.2C33 8 25.8 1 17 1z" fill="${pinColor}" stroke="#fff" stroke-width="1.2"/></svg>`
+          const text = document.createElement('div')
+          text.textContent = m.pinText
+          text.style.cssText =
+            'position:absolute;top:10px;left:0;right:0;text-align:center;font-size:11px;font-weight:800;color:#fff;letter-spacing:-0.5px'
+          el.appendChild(text)
+          return new kakao.maps.CustomOverlay({
+            map: mapRef.current,
+            position: new kakao.maps.LatLng(m.lat, m.lng),
+            content: el,
+            yAnchor: 1,
+            xAnchor: 0.5,
+            zIndex: 10,
+          })
+        }
+
+        if (m.exit) {
+          // 지하철 출구: 흰 원 + 진한 테두리 안에 계단/에스컬레이터 그림(모르면 출구 번호), 오른쪽 위에 "2번 출구" 이름표
+          el.style.cssText = 'position:relative;width:28px;height:28px'
+          const circle = document.createElement('div')
+          circle.style.cssText =
+            'width:28px;height:28px;border-radius:50%;background:#fff;border:2.5px solid #1F2937;box-sizing:border-box;' +
+            'display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.35);' +
+            'font-size:13px;font-weight:800;color:#1F2937'
+          if (m.exit.type === 'STAIRS') circle.innerHTML = EXIT_ICONS.stairs
+          else if (m.exit.type === 'ESCALATOR') circle.innerHTML = EXIT_ICONS.escalator
+          else circle.textContent = m.icon ?? ''
+          el.appendChild(circle)
+          if (m.label) {
+            const label = document.createElement('div')
+            label.textContent = m.label
+            label.style.cssText =
+              'position:absolute;bottom:22px;left:22px;white-space:nowrap;padding:4px 8px;border-radius:6px;background:#fff;' +
+              'font-size:13px;font-weight:800;color:#1A2B4C;box-shadow:0 1px 4px rgba(0,0,0,.3)'
+            el.appendChild(label)
+          }
+          return new kakao.maps.CustomOverlay({
+            map: mapRef.current,
+            position: new kakao.maps.LatLng(m.lat, m.lng),
+            content: el,
+            yAnchor: 0.5,
+            xAnchor: 0.5,
+            zIndex: 8, // 횡단보도 배지·즐겨찾기보다 위, 출발/도착 핀보다 아래
+          })
+        }
 
         if (m.pin) {
           // 물방울 모양 핀. 뾰족한 끝이 좌표를 가리키고, 이름표(label)는 핀 아래에 붙는다
@@ -183,7 +247,7 @@ export default function KakaoMap({
           : m.subtle
             ? 'none'
             : '0 1px 4px rgba(0,0,0,.4)'
-        el.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;border:${border}px solid #fff;background:${color};opacity:${
+        el.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;box-sizing:${m.borderColor ? 'border-box' : 'content-box'};border:${border}px solid ${m.borderColor ?? '#fff'};background:${color};opacity:${
           m.subtle ? 0.7 : 1
         };box-shadow:${shadow};cursor:${m.onClick ? 'pointer' : 'default'}`
         if (m.icon) {

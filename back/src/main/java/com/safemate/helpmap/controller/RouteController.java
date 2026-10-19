@@ -19,7 +19,9 @@ public class RouteController {
     public RoutesResponse findRoutes(@RequestParam double fromLat, @RequestParam double fromLng,
                                      @RequestParam double toLat, @RequestParam double toLng,
                                      @RequestParam(required = false) String fromAddress,
-                                     @RequestParam(required = false) String toAddress) {
-        return routeService.findRoutes(fromLat, fromLng, toLat, toLng, fromAddress, toAddress);
+                                     @RequestParam(required = false) String toAddress,
+                                     @RequestParam(required = false) String fromName,
+                                     @RequestParam(required = false) String toName) {
+        return routeService.findRoutes(fromLat, fromLng, toLat, toLng, fromAddress, toAddress, fromName, toName);
     }
 }
