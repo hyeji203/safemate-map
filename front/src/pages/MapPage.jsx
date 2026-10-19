@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import axios from 'axios'
 import { routeApi } from '../api/routeApi'
+import { getErrorKind } from '../api/errorKind'
 import { placeApi } from '../api/placeApi'
 import KakaoMap from '../components/KakaoMap'
 import PlaceSearchBar, { PlaceResults } from '../components/PlaceSearchBar'
@@ -206,6 +208,24 @@ export default function MapPage() {
   const [routeRefreshKey, setRouteRefreshKey] = useState(0) // 제보 등록 후 경로를 다시 계산하기 위한 트리거
   const [error, setError] = useState(null)
 
+  // 가로등·제보·즐겨찾기 조회 실패는 경로 안내 바(error)를 덮어쓰지 않게 따로 짧은 토스트로 알린다
+  const [loadErrorToast, setLoadErrorToast] = useState(null)
+  const serverErrorShownRef = useRef(false) // 서버가 꺼져 있으면 여러 조회가 한꺼번에 실패하므로 server 안내는 한 번만
+  const notifyLoadError = useCallback((err, message) => {
+    if (getErrorKind(err) === 'server') {
+      if (serverErrorShownRef.current) return
+      serverErrorShownRef.current = true
+      setLoadErrorToast('서버에 연결할 수 없어요')
+      return
+    }
+    setLoadErrorToast(message)
+  }, [])
+  useEffect(() => {
+    if (!loadErrorToast) return
+    const timer = setTimeout(() => setLoadErrorToast(null), LOAD_ERROR_TOAST_MS)
+    return () => clearTimeout(timer)
+  }, [loadErrorToast])
+
   // 지도 상단 장소 검색. 결과를 고르면 search.selected가 정보 카드로 표시된다
   const search = usePlaceSearch()
   const routeHistory = useRouteHistory() // 최근 길찾기 (이 브라우저에만 저장)
@@ -294,26 +314,44 @@ export default function MapPage() {
     routeApi
       .findStreetLights()
       .then((res) => setStreetLights(res.data))
-      .catch(() => setError('가로등 목록을 불러오지 못했습니다.'))
-  }, [])
+      .catch((err) => {
+        console.error('[MapPage] 가로등 목록 조회 실패', err)
+        notifyLoadError(err, '가로등 목록을 불러오지 못했어요')
+      })
+  }, [notifyLoadError])
 
   useEffect(() => {
     if (!start || !end) return
+    // 실패해도 옛 목적지의 경로 선·카드가 남지 않게 먼저 비운다 (비어 있는 동안 안내 바에 "경로를 찾는 중..." 표시)
+    setRoutes(null)
+    setError(null)
+    // 출발/도착이 다시 바뀌면 이전 요청을 취소해서 마지막 요청 결과만 반영한다
+    const controller = new AbortController()
     routeApi
-      .findRoute({
-        fromLat: start.lat,
-        fromLng: start.lng,
-        toLat: end.lat,
-        toLng: end.lng,
-        fromAddress: start.address,
-        toAddress: end.address,
-      })
+      .findRoute(
+        {
+          fromLat: start.lat,
+          fromLng: start.lng,
+          toLat: end.lat,
+          toLng: end.lng,
+          fromAddress: start.address,
+          toAddress: end.address,
+        },
+        controller.signal,
+      )
       .then((res) => {
+        if (controller.signal.aborted) return // 응답이 왔어도 그 사이 취소됐으면 버린다
         setRoutes(res.data)
-        setError(null)
         addRouteHistory(start, end)
       })
-      .catch(() => setError('경로를 찾지 못했습니다.'))
+      .catch((err) => {
+        // 취소된 요청은 실패가 아니므로 오류 문구를 띄우지 않는다
+        if (axios.isCancel(err) || err.name === 'CanceledError' || controller.signal.aborted) return
+        setError(ROUTE_ERROR_MESSAGES[getErrorKind(err)] ?? ROUTE_ERROR_MESSAGES.default)
+      })
+    return () => {
+      controller.abort()
+    }
     // addRouteHistory는 useCallback이라 바뀌지 않아서 경로를 다시 찾게 만들지 않는다
   }, [start, end, routeRefreshKey, addRouteHistory])
 
@@ -323,8 +361,9 @@ export default function MapPage() {
       setReports(data)
     } catch (err) {
       console.error('[MapPage] 제보 목록 조회 실패', err)
+      notifyLoadError(err, '제보 목록을 불러오지 못했어요')
     }
-  }, [])
+  }, [notifyLoadError])
 
   // 처음 들어올 때 + 누군가 새 제보를 올릴 때마다(실시간 알림) 제보 마커를 다시 불러온다
   const { reportVersion } = useNotifications()
@@ -339,8 +378,16 @@ export default function MapPage() {
     favoriteApi
       .findMine()
       .then((res) => setFavorites(res.data))
-      .catch((err) => console.error('[MapPage] 즐겨찾기 조회 실패', err))
-  }, [])
+      .catch((err) => {
+        // 401/403은 로그인하지 않은 정상 상황이라 안내 없이 빈 목록으로 둔다
+        if (getErrorKind(err) === 'auth') {
+          setFavorites([])
+          return
+        }
+        console.error('[MapPage] 즐겨찾기 조회 실패', err)
+        notifyLoadError(err, '즐겨찾기를 불러오지 못했어요')
+      })
+  }, [notifyLoadError])
 
   // 즐겨찾기를 지도에 별로 표시할지 (오른쪽 위 별 버튼). 고른 값은 이 브라우저에 기억해 둔다
   const [showFavorites, setShowFavorites] = useState(() => {
@@ -1104,6 +1151,12 @@ export default function MapPage() {
                     ? `도착: ${end.title ?? '선택한 지점'} · 출발지를 검색하세요`
                     : null)}
           </div>
+          {/* 서버에 닿지 못한 경우만 다시 시도할 의미가 있다 (경로 없음·잘못된 요청은 다시 보내도 같음) */}
+          {error === ROUTE_ERROR_MESSAGES.server && (
+            <button type="button" onClick={() => setRouteRefreshKey((k) => k + 1)} style={retryButtonStyle}>
+              다시 시도
+            </button>
+          )}
           {/* 출발/도착 중 하나만 정했을 때의 취소 버튼 (둘 다 정하면 위쪽 "출발 → 도착" 바의 ✕를 쓴다) */}
           {(start || end) && !(start && end) && (
             <button type="button" onClick={resetRoute} style={closeButtonStyle} aria-label="경로 취소">
@@ -1142,6 +1195,16 @@ export default function MapPage() {
           style={{ position: 'absolute', zIndex: 9, top: 108, left: '50%', transform: 'translateX(-50%)' }}
         >
           {mapHint}
+        </div>
+      )}
+      {loadErrorToast && (
+        // 데이터 조회 실패 안내. 칩 안내(mapHint)가 떠 있으면 그 아래로 내린다
+        <div
+          role="alert"
+          className="map-hint-toast"
+          style={{ position: 'absolute', zIndex: 9, top: mapHint ? 148 : 108, left: '50%', transform: 'translateX(-50%)' }}
+        >
+          {loadErrorToast}
         </div>
       )}
 
@@ -1326,6 +1389,28 @@ export default function MapPage() {
       {showCoachMarks && <CoachMarks steps={COACH_STEPS} onClose={closeCoachMarks} />}
     </div>
   )
+}
+
+const LOAD_ERROR_TOAST_MS = 2500 // 데이터 조회 실패 토스트를 띄워 두는 시간
+
+// 경로 찾기 실패 문구 (getErrorKind 종류별, 나머지는 default)
+const ROUTE_ERROR_MESSAGES = {
+  server: '서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.',
+  notFound: '출발지와 도착지를 잇는 경로를 찾지 못했어요.',
+  badRequest: '출발지나 도착지 정보가 올바르지 않아요.',
+  default: '경로를 불러오지 못했어요.',
+}
+
+const retryButtonStyle = {
+  flexShrink: 0,
+  padding: '4px 10px',
+  border: `1px solid ${colors.navy}`,
+  borderRadius: 6,
+  background: colors.white,
+  color: colors.navy,
+  fontSize: 13,
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
 }
 
 const closeButtonStyle = {
