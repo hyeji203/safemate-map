@@ -47,12 +47,19 @@ export function TutorialProvider({ children }) {
     setMode('tour')
   }, [])
 
+  // 로그인 화면의 "로그인 없이 시작하기": 본 적이 있어도 매번 "써 본 적 있나요?"부터 다시 묻는다
+  const askAgain = useCallback(() => {
+    openedFromMyPage.current = false
+    setReplayHint(false)
+    setMode('ask')
+  }, [])
+
   const hideReplayHint = useCallback(() => {
     setReplayHint(false)
   }, [])
 
   return (
-    <TutorialContext.Provider value={{ mode, dismiss, startTour, reopen, replayHint, hideReplayHint }}>
+    <TutorialContext.Provider value={{ mode, dismiss, startTour, reopen, askAgain, replayHint, hideReplayHint }}>
       {children}
     </TutorialContext.Provider>
   )

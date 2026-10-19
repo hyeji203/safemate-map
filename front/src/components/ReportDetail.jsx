@@ -9,11 +9,13 @@ import { useNotifications } from '../hooks/useNotifications'
  * 제보 마커 클릭 시 뜨는 상세 정보. 같은 위치에 여러 건이 쌓여있으면 전부 목록으로 보여준다
  * (마커가 좌표 하나에 완전히 겹치기 때문에, 최신 것만 보이지 않도록 여기서 다 모아 보여줌).
  * 삭제는 본인이 등록한 제보만 가능 (서버에서 deviceId로 확인).
+ * 탈퇴한 사용자가 남긴 제보(withdrawnReporter)는 삭제 대신 "해결됐어요" 버튼으로 누구나 지울 수 있다.
  * - overMap: true면 지도를 어둡게 덮지 않고 아래쪽 카드로만 띄운다 (주변 제보 목록에서 골랐을 때 지도 위치도 같이 보이게)
  * - closeLabel: 닫기 버튼 글자 (주변 제보에서 열었을 때는 "주변 제보 목록으로")
  */
 export default function ReportDetail({ reports, onClose, onDeleted, onAddReport, overMap = false, closeLabel = '닫기' }) {
   const [deletingId, setDeletingId] = useState(null)
+  const [resolvingId, setResolvingId] = useState(null)
   const [error, setError] = useState(null)
   const { markMineDeleted } = useNotifications()
 
@@ -38,6 +40,21 @@ export default function ReportDetail({ reports, onClose, onDeleted, onAddReport,
       console.error('[ReportDetail]', err)
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  const handleResolve = async (id) => {
+    if (!window.confirm('이 문제가 해결됐나요? 해결됐다고 알리면 이 제보는 지도에서 사라져요.')) return
+    setResolvingId(id)
+    setError(null)
+    try {
+      await reportApi.resolve(id)
+      onDeleted?.(id)
+    } catch (err) {
+      setError('해결 처리에 실패했습니다. 잠시 후 다시 시도해주세요.')
+      console.error('[ReportDetail]', err)
+    } finally {
+      setResolvingId(null)
     }
   }
 
@@ -131,23 +148,46 @@ export default function ReportDetail({ reports, onClose, onDeleted, onAddReport,
                 />
               )}
 
-              <button
-                type="button"
-                onClick={() => handleDelete(report.id)}
-                disabled={deletingId === report.id}
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: 8,
-                  border: 'none',
-                  background: colors.red,
-                  color: colors.white,
-                  fontWeight: 700,
-                  fontSize: 13,
-                  opacity: deletingId === report.id ? 0.6 : 1,
-                }}
-              >
-                {deletingId === report.id ? '삭제 중...' : '해당 제보 삭제'}
-              </button>
+              {report.withdrawnReporter ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleResolve(report.id)}
+                    disabled={resolvingId === report.id}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: 8,
+                      border: 'none',
+                      background: colors.navy,
+                      color: colors.white,
+                      fontWeight: 700,
+                      fontSize: 13,
+                      opacity: resolvingId === report.id ? 0.6 : 1,
+                    }}
+                  >
+                    {resolvingId === report.id ? '처리 중...' : '✓ 해결됐어요'}
+                  </button>
+                  <span style={{ fontSize: 12, color: colors.gray }}>탈퇴한 사용자의 제보예요</span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleDelete(report.id)}
+                  disabled={deletingId === report.id}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    border: 'none',
+                    background: colors.red,
+                    color: colors.white,
+                    fontWeight: 700,
+                    fontSize: 13,
+                    opacity: deletingId === report.id ? 0.6 : 1,
+                  }}
+                >
+                  {deletingId === report.id ? '삭제 중...' : '해당 제보 삭제'}
+                </button>
+              )}
             </div>
           ))}
         </div>

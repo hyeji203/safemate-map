@@ -4,6 +4,7 @@ import com.safemate.helpmap.dto.ReportCreateRequest;
 import com.safemate.helpmap.dto.ReportResponse;
 import com.safemate.helpmap.entity.Member;
 import com.safemate.helpmap.entity.Report;
+import com.safemate.helpmap.repository.MemberRepository;
 import com.safemate.helpmap.repository.ReportRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -32,6 +34,7 @@ import java.util.UUID;
 public class ReportServiceImpl implements ReportService {
 
     private final ReportRepository reportRepository;
+    private final MemberRepository memberRepository;
     private final CurrentMemberService currentMemberService;
     private final KakaoLocalService kakaoLocalService;
     private final SimpMessagingTemplate messagingTemplate;
@@ -58,8 +61,9 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     public List<ReportResponse> findAll() {
+        Long withdrawnId = withdrawnMemberId();
         return reportRepository.findAll().stream()
-                .map(ReportResponse::from)
+                .map(r -> ReportResponse.from(r, Objects.equals(r.getReporter().getId(), withdrawnId)))
                 .toList();
     }
 
@@ -80,13 +84,34 @@ public class ReportServiceImpl implements ReportService {
         if (!report.getReporter().getEmail().equals(currentMemberService.currentEmail(deviceId))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "본인이 등록한 제보만 삭제할 수 있습니다.");
         }
+        remove(report);
+    }
 
+    @Override
+    @Transactional
+    public void resolve(Long reportId) {
+        Report report = reportRepository.findById(reportId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "존재하지 않는 제보입니다."));
+
+        if (!Objects.equals(report.getReporter().getId(), withdrawnMemberId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "탈퇴한 사용자의 제보만 해결 처리할 수 있습니다.");
+        }
+        remove(report);
+    }
+
+    // 제보와 사진 파일을 지우고, 다른 사용자 화면에서도 마커·알림이 사라지게 알린다
+    private void remove(Report report) {
+        Long reportId = report.getId();
         if (report.getImagePath() != null) {
             deleteImageFile(report.getImagePath());
         }
         reportRepository.delete(report);
         // 다른 사용자 화면에서 마커·알림을 지우도록 삭제된 제보 id만 보낸다
         broadcastAfterCommit("/topic/reports/deleted", Map.of("id", reportId), reportId);
+    }
+
+    private Long withdrawnMemberId() {
+        return memberRepository.findByEmail(MemberService.WITHDRAWN_EMAIL).map(Member::getId).orElse(null);
     }
 
     private void broadcastAfterCommit(ReportResponse response) {

@@ -15,4 +15,7 @@ public interface ReportService {
     List<ReportResponse> findMine(String deviceId);
 
     void delete(Long reportId, String deviceId);
+
+    /** 탈퇴한 회원이 남긴 제보를 "해결됐어요"로 지운다. 다른 제보는 403 */
+    void resolve(Long reportId);
 }

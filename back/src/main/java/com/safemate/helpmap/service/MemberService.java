@@ -24,6 +24,12 @@ import java.util.Locale;
 @Transactional(readOnly = true)
 public class MemberService {
 
+    /**
+     * 탈퇴한 회원의 제보를 넘겨받는 계정. 제보는 다른 사람의 안심경로에 계속 쓰이도록 이 계정의 익명 제보로 남긴다.
+     * 이메일 형식이 아니라서 회원가입으로는 같은 계정을 만들 수 없고, 비밀번호가 비어 있어 로그인도 되지 않는다.
+     */
+    public static final String WITHDRAWN_EMAIL = "withdrawn:system";
+
     private final MemberRepository memberRepository;
     private final ReportRepository reportRepository;
     private final FavoriteRepository favoriteRepository;
@@ -49,6 +55,27 @@ public class MemberService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다."));
         moveAnonymousData(request.deviceId(), member);
         return member;
+    }
+
+    /**
+     * 회원탈퇴: 비밀번호를 확인한 뒤 즐겨찾기와 계정을 지우고, 올린 제보는 "탈퇴한 사용자" 계정으로 넘겨 익명으로 남긴다.
+     * 이렇게 남은 제보는 다른 사용자가 "해결됐어요"로 지울 수 있다 (ReportService.resolve).
+     */
+    @Transactional
+    public void withdraw(Long memberId, String password) {
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다."));
+        if (!passwordEncoder.matches(password, member.getPassword())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "비밀번호가 올바르지 않습니다.");
+        }
+        reportRepository.changeReporter(member, withdrawnMember());
+        favoriteRepository.deleteByOwner(member);
+        memberRepository.delete(member);
+    }
+
+    private Member withdrawnMember() {
+        return memberRepository.findByEmail(WITHDRAWN_EMAIL)
+                .orElseGet(() -> memberRepository.save(new Member(WITHDRAWN_EMAIL, "", "탈퇴한 사용자")));
     }
 
     // 로그인 전에 이 브라우저에서 익명으로 남긴 제보·즐겨찾기를 계정으로 옮겨, 로그인 후에도 "내 제보"에 그대로 보이게 한다.

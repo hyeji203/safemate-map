@@ -16,4 +16,9 @@ public interface FavoriteRepository extends JpaRepository<Favorite, Long> {
     @Modifying
     @Query("update Favorite f set f.owner = :to where f.owner = :from")
     int changeOwner(@Param("from") Member from, @Param("to") Member to);
+
+    // 회원탈퇴 시 그 회원의 즐겨찾기를 모두 지운다
+    @Modifying
+    @Query("delete from Favorite f where f.owner = :owner")
+    int deleteByOwner(@Param("owner") Member owner);
 }

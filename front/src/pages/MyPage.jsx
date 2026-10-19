@@ -6,6 +6,7 @@ import { categoryIcon, categoryLabel } from '../constants/reportCategories'
 import { useAuth } from '../hooks/useAuth'
 import { useTutorial } from '../hooks/useTutorial'
 import { useNotifications } from '../hooks/useNotifications'
+import { PasswordInput } from '../components/AuthForm'
 
 // 마이페이지: 프로필, 사용가이드 다시 보기, 내 제보 내역. 하단 탭은 App 공통 BottomNav가 그린다.
 export default function MyPage() {
@@ -112,8 +113,109 @@ export default function MyPage() {
             </ul>
           )}
         </section>
+
+        {member && <WithdrawSection />}
       </div>
     </div>
+  )
+}
+
+// 회원탈퇴: 맨 아래 작은 글씨 버튼을 누르면 안내와 비밀번호 확인 칸을 펼친다. 탈퇴하면 로그인 화면으로 간다
+function WithdrawSection() {
+  const navigate = useNavigate()
+  const { withdraw } = useAuth()
+  const [open, setOpen] = useState(false)
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  const close = () => {
+    setOpen(false)
+    setPassword('')
+    setError(null)
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!password) {
+      setError('비밀번호를 입력해주세요.')
+      return
+    }
+    if (!window.confirm('정말 탈퇴할까요? 되돌릴 수 없습니다.')) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      await withdraw(password)
+      window.alert('탈퇴했어요. 그동안 이용해 주셔서 감사합니다.')
+      navigate('/login', { replace: true })
+    } catch (err) {
+      setError(
+        err.response?.status === 401 ? '비밀번호가 올바르지 않습니다.' : '탈퇴에 실패했습니다. 잠시 후 다시 시도해주세요.',
+      )
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-6 cursor-pointer self-center border-none bg-transparent p-2 text-[13px] text-muted underline underline-offset-2"
+      >
+        회원탈퇴
+      </button>
+    )
+  }
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="mt-6 flex flex-col gap-3 rounded-2xl border border-solid border-red-400/40 bg-card p-4"
+      noValidate
+    >
+      <h2 className="m-0 text-[16px] font-bold text-white">회원탈퇴</h2>
+      <ul className="m-0 flex flex-col gap-1 pl-5 text-[13px] break-keep text-slate-300">
+        <li>계정과 즐겨찾기는 모두 삭제돼요.</li>
+        <li>
+          올린 제보는 다른 사람의 안심경로를 위해 &quot;탈퇴한 사용자&quot;의 익명 제보로 남아요. 이후에는 직접 지울 수 없고,
+          다른 사용자가 해결됐다고 알려 주면 사라져요.
+        </li>
+        <li>탈퇴하면 되돌릴 수 없어요.</li>
+      </ul>
+      <label className="flex flex-col gap-1.5 text-[13px] text-muted">
+        비밀번호 확인
+        <PasswordInput
+          autoComplete="current-password"
+          placeholder="비밀번호"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="w-full rounded-xl border border-solid border-line bg-night px-3.5 py-3 text-[15px] text-white outline-none placeholder:text-muted/60 focus:border-red-400"
+        />
+      </label>
+      {error && (
+        <p role="alert" className="m-0 rounded-lg bg-red-500/10 px-3 py-2 text-[13px] text-red-300">
+          {error}
+        </p>
+      )}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={close}
+          className="flex-1 cursor-pointer rounded-xl border border-solid border-line bg-transparent py-2.5 text-[14px] text-slate-200"
+        >
+          취소
+        </button>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="flex-1 cursor-pointer rounded-xl border-none bg-red-500 py-2.5 text-[14px] font-bold text-white disabled:cursor-default disabled:opacity-60"
+        >
+          {submitting ? '탈퇴 중…' : '탈퇴하기'}
+        </button>
+      </div>
+    </form>
   )
 }
 
@@ -126,6 +228,8 @@ function ProfileCard() {
     if (!window.confirm('로그아웃할까요?')) return
     try {
       await logout()
+      // 로그아웃하면 앱 첫 화면처럼 로그인 화면으로 돌아간다
+      navigate('/login', { replace: true })
     } catch (err) {
       console.error('[MyPage] 로그아웃 실패', err)
       window.alert('로그아웃에 실패했습니다. 잠시 후 다시 시도해주세요.')

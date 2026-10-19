@@ -138,6 +138,16 @@ body {
 .coach-content {
   animation: coach-fade 0.25s ease-out;
 }
+/* 앱 시작 화면(StartupLoginGate): 로고와 앱 이름이 살짝 떠오르며 나타난다 */
+.splash-fade {
+  animation: coach-fade 0.6s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .splash-fade {
+    animation: none;
+  }
+}
+
 @keyframes coach-fade {
   from {
     opacity: 0;

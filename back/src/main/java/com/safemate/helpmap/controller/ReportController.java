@@ -43,6 +43,13 @@ public class ReportController {
         return reportService.findMine(deviceId);
     }
 
+    /** 탈퇴한 사용자가 남긴 제보를 "해결됐어요"로 지운다 (누구나 가능) */
+    @PostMapping("/{id}/resolve")
+    public ResponseEntity<Void> resolve(@PathVariable Long id) {
+        reportService.resolve(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id, @RequestParam String deviceId) {
         reportService.delete(id, deviceId);

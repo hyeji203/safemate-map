@@ -8,6 +8,8 @@ export const memberApi = {
     apiClient.post('/members/signup', { email, password, nickname, deviceId: getDeviceId() }),
   login: ({ email, password }) => apiClient.post('/members/login', { email, password, deviceId: getDeviceId() }),
   logout: () => apiClient.post('/members/logout'),
+  // 회원탈퇴. 비밀번호를 다시 확인한다. 즐겨찾기는 지워지고 제보는 익명으로 남는다
+  withdraw: (password) => apiClient.delete('/members/me', { data: { password } }),
   // 로그인 안 한 상태면 204(본문 없음) -> null
   me: () => apiClient.get('/members/me').then((res) => (res.status === 204 ? null : res.data)),
 }
