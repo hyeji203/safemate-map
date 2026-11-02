@@ -19,7 +19,7 @@ import { useTutorial } from '../hooks/useTutorial'
 import { useSafetyLayers, FACILITY_TYPES } from '../hooks/useSafetyLayers'
 import SafetyChips from '../components/SafetyChips'
 import { SAFETY_LAYERS } from '../constants/safetyLayers'
-import { haversineMeters } from '../utils/geo'
+import { distanceToPolylineMeters, haversineMeters } from '../utils/geo'
 import { reportApi } from '../api/reportApi'
 import { favoriteApi } from '../api/favoriteApi'
 import { colors } from '../styles/colors'
@@ -178,6 +178,15 @@ const STREETLIGHT_COLOR = '#FFD21F'
 const ROUTE_COLORS = { safe: colors.amber, shortest: colors.gray }
 // 안심·최단경로가 같다는 안내가 서서히 사라지는 시간
 const SAME_ROUTE_FADE_MS = 800
+// 다른 사람의 새 제보가 보고 있는 경로(안심·최단)에서 이 거리(m) 안이면 경로를 다시 찾는다.
+// 서버는 길에서 25m 안의 제보만 위험으로 세므로(RiskWeightCalculator.REPORT_RADIUS_METERS) 여유를 두고 잡았다.
+// 새 제보는 위험을 올리기만 하므로, 두 경로 어디에도 가깝지 않으면 다시 찾아도 결과가 같다
+const REROUTE_REPORT_METERS = 50
+
+// 경로를 지도 좌표 목록으로. geometry = 실제 도로 모양(굽은 길 포함), 없으면 교차로만 직선으로 잇는다
+const routePoints = (route) =>
+  (route.geometry?.length ? route.geometry : route.path).map((p) => ({ lat: p.latitude, lng: p.longitude }))
+const routeNodeKey = (route) => route.path.map((p) => p.nodeId).join()
 
 // 메인 지도 화면 (필수 MVP).
 // - 상단 검색창에서 장소를 고르면 지도가 그 위치로 이동하고, 하단 정보 카드에서 출발/도착으로 지정한다
@@ -210,6 +219,18 @@ export default function MapPage() {
   const [routes, setRoutes] = useState(null) // { shortest, safe }
   const [selectedRouteKey, setSelectedRouteKey] = useState('safe') // 아래 카드에서 고른 경로: 'safe' | 'shortest'
   const [routeRefreshKey, setRouteRefreshKey] = useState(0) // 제보 등록 후 경로를 다시 계산하기 위한 트리거
+  const routesRef = useRef(null) // 경로 다시 찾기 이펙트·새 제보 이펙트에서 지금 보이는 경로를 읽는 용도
+  useEffect(() => {
+    routesRef.current = routes
+  }, [routes])
+  const routedPointsRef = useRef({ start: null, end: null }) // 마지막으로 경로를 찾은 출발/도착
+  const rerouteByReportRef = useRef(false) // 이번 다시 찾기가 다른 사람의 새 제보 때문인지 (끝나면 안내를 띄운다)
+  const [routeNotice, setRouteNotice] = useState(null) // 새 제보로 경로를 다시 찾았다는 안내
+  useEffect(() => {
+    if (!routeNotice) return
+    const timer = setTimeout(() => setRouteNotice(null), ROUTE_NOTICE_MS)
+    return () => clearTimeout(timer)
+  }, [routeNotice])
   const [error, setError] = useState(null)
 
   // 가로등·제보·즐겨찾기 조회 실패는 경로 안내 바(error)를 덮어쓰지 않게 따로 짧은 토스트로 알린다
@@ -326,8 +347,15 @@ export default function MapPage() {
 
   useEffect(() => {
     if (!start || !end) return
-    // 실패해도 옛 목적지의 경로 선·카드가 남지 않게 먼저 비운다 (비어 있는 동안 안내 바에 "경로를 찾는 중..." 표시)
-    setRoutes(null)
+    // 출발/도착은 그대로인데 제보 때문에 다시 찾는 경우: 찾는 동안 지금 경로를 그대로 두고, 실패해도 지우지 않는다
+    const prev = routedPointsRef.current
+    const refreshing = prev.start === start && prev.end === end && routesRef.current != null
+    const previousSafe = refreshing ? routesRef.current.safe : null
+    const byReport = refreshing && rerouteByReportRef.current
+    routedPointsRef.current = { start, end }
+    rerouteByReportRef.current = false
+    // 출발/도착이 바뀌었으면 실패해도 옛 목적지의 경로 선·카드가 남지 않게 먼저 비운다 (비어 있는 동안 안내 바에 "경로를 찾는 중..." 표시)
+    if (!refreshing) setRoutes(null)
     setError(null)
     // 출발/도착이 다시 바뀌면 이전 요청을 취소해서 마지막 요청 결과만 반영한다
     const controller = new AbortController()
@@ -349,11 +377,23 @@ export default function MapPage() {
       .then((res) => {
         if (controller.signal.aborted) return // 응답이 왔어도 그 사이 취소됐으면 버린다
         setRoutes(res.data)
-        addRouteHistory(start, end)
+        if (!refreshing) addRouteHistory(start, end) // 같은 길찾기를 다시 계산한 것은 기록 순서를 바꾸지 않는다
+        if (byReport) {
+          setRouteNotice(
+            routeNodeKey(previousSafe) === routeNodeKey(res.data.safe)
+              ? '경로 근처에 새 위험 제보가 있어요. 지금 안심경로가 그대로 가장 안전해요'
+              : '경로 근처에 새 위험 제보가 있어 안심경로를 다시 찾았어요',
+          )
+        }
       })
       .catch((err) => {
         // 취소된 요청은 실패가 아니므로 오류 문구를 띄우지 않는다
         if (axios.isCancel(err) || err.name === 'CanceledError' || controller.signal.aborted) return
+        if (refreshing) {
+          // 이전 경로는 남겨 두고 짧게만 알린다
+          setRouteNotice('새 제보를 반영한 경로를 찾지 못해 이전 경로를 보여드려요')
+          return
+        }
         setError(ROUTE_ERROR_MESSAGES[getErrorKind(err)] ?? ROUTE_ERROR_MESSAGES.default)
       })
     return () => {
@@ -373,10 +413,24 @@ export default function MapPage() {
   }, [notifyLoadError])
 
   // 처음 들어올 때 + 누군가 새 제보를 올릴 때마다(실시간 알림) 제보 마커를 다시 불러온다
-  const { reportVersion } = useNotifications()
+  const { reportVersion, incomingReport } = useNotifications()
   useEffect(() => {
     loadReports()
   }, [loadReports, reportVersion])
+
+  // 다른 사람이 지금 보고 있는 경로 근처에 제보하면 그 제보까지 반영해 경로를 다시 찾는다 (내 제보는 handleSubmitted가 처리)
+  useEffect(() => {
+    const current = routesRef.current
+    if (!incomingReport || !current) return
+    const near = [current.safe, current.shortest].some(
+      (route) =>
+        distanceToPolylineMeters(incomingReport.latitude, incomingReport.longitude, routePoints(route)) <=
+        REROUTE_REPORT_METERS,
+    )
+    if (!near) return
+    rerouteByReportRef.current = true
+    setRouteRefreshKey((k) => k + 1)
+  }, [incomingReport])
 
   // 즐겨찾기 (마이페이지 담당). 장소 정보 카드에 "즐겨찾기됨" 표시를 하려고 미리 불러 둔다
   const [favorites, setFavorites] = useState([])
@@ -770,8 +824,7 @@ export default function MapPage() {
   const visibleRoutes = start && end ? routes : null
   // 안심경로가 최단경로와 같은 길인지 (지나는 교차로가 모두 같으면 같은 길)
   const sameRoute =
-    !!visibleRoutes &&
-    visibleRoutes.safe.path.map((p) => p.nodeId).join() === visibleRoutes.shortest.path.map((p) => p.nodeId).join()
+    !!visibleRoutes && routeNodeKey(visibleRoutes.safe) === routeNodeKey(visibleRoutes.shortest)
   // 같은 길이라는 안내는 경로가 새로 나올 때 잠깐만 띄우고 서서히 사라지게 한다 (카드 위를 계속 가리지 않게)
   // 'shown' -> 'fading'(투명해지는 중) -> null(없앰)
   const [sameRouteNotice, setSameRouteNotice] = useState(null)
@@ -861,13 +914,10 @@ export default function MapPage() {
   // 고른 경로는 굵고 진하게 맨 위에, 다른 경로는 가늘고 흐리게 아래에 깔아 비교만 할 수 있게 한다
   const paths = useMemo(() => {
     if (!visibleRoutes) return []
-    // geometry = 실제 도로 모양(굽은 길 포함), 없으면 교차로만 직선으로 잇는다
-    const toPoints = (route) =>
-      (route.geometry?.length ? route.geometry : route.path).map((p) => ({ lat: p.latitude, lng: p.longitude }))
     const otherKey = selectedRouteKey === 'safe' ? 'shortest' : 'safe'
     return [
-      { id: otherKey, points: toPoints(visibleRoutes[otherKey]), color: ROUTE_COLORS[otherKey], weight: 5, opacity: 0.4 },
-      { id: selectedRouteKey, points: toPoints(visibleRoutes[selectedRouteKey]), color: ROUTE_COLORS[selectedRouteKey], weight: 9 },
+      { id: otherKey, points: routePoints(visibleRoutes[otherKey]), color: ROUTE_COLORS[otherKey], weight: 5, opacity: 0.4 },
+      { id: selectedRouteKey, points: routePoints(visibleRoutes[selectedRouteKey]), color: ROUTE_COLORS[selectedRouteKey], weight: 9 },
     ]
   }, [visibleRoutes, selectedRouteKey])
 
@@ -1251,6 +1301,22 @@ export default function MapPage() {
           {loadErrorToast}
         </div>
       )}
+      {routeNotice && (
+        // 새 제보로 경로를 다시 찾았다는 안내. 위의 두 안내가 떠 있으면 그만큼 아래로 내린다
+        <div
+          role="status"
+          className="map-hint-toast"
+          style={{
+            position: 'absolute',
+            zIndex: 9,
+            top: 108 + (mapHint ? 40 : 0) + (loadErrorToast ? 40 : 0),
+            left: '50%',
+            transform: 'translateX(-50%)',
+          }}
+        >
+          {routeNotice}
+        </div>
+      )}
 
       {/* 즐겨찾기 별 표시/숨기기. 칩 줄 바로 아래 오른쪽 (검색 결과 목록이 펼쳐지면 그 아래로 가려진다).
           제보 모드에서는 같은 자리에 안내 띠가 뜨므로 숨긴다 */}
@@ -1436,6 +1502,7 @@ export default function MapPage() {
 }
 
 const LOAD_ERROR_TOAST_MS = 2500 // 데이터 조회 실패 토스트를 띄워 두는 시간
+const ROUTE_NOTICE_MS = 4000 // 새 제보로 경로를 다시 찾았다는 안내를 띄워 두는 시간
 
 // 경로 찾기 실패 문구 (getErrorKind 종류별, 나머지는 default)
 const ROUTE_ERROR_MESSAGES = {

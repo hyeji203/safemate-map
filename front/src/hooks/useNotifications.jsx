@@ -53,6 +53,8 @@ export function NotificationsProvider({ children }) {
   const [toast, setToast] = useState(null)
   // 제보가 새로 올라오거나 삭제될 때마다(내 것 포함) 1씩 오른다. 지도 화면이 이 값을 보고 제보 마커를 다시 불러온다.
   const [reportVersion, setReportVersion] = useState(0)
+  // 다른 사람이 방금 올린 제보. 지도 화면이 이 제보가 보고 있는 경로 근처인지 보고 경로를 다시 찾는다
+  const [incomingReport, setIncomingReport] = useState(null)
 
   useEffect(() => {
     saveNotifications(notifications)
@@ -74,6 +76,7 @@ export function NotificationsProvider({ children }) {
     const handleReport = async (report) => {
       setReportVersion((v) => v + 1)
       if (myReportIds.current.has(report.id)) return
+      setIncomingReport(report)
 
       // 제보는 자주 오지 않으므로 올 때마다 즐겨찾기를 새로 받아 최신 목록으로 비교한다
       let nearFavorite = null
@@ -154,6 +157,7 @@ export function NotificationsProvider({ children }) {
         toast,
         dismissToast,
         reportVersion,
+        incomingReport,
       }}
     >
       {children}
